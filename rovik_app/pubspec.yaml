@@ -1,1 +1,37 @@
 name: rovik_app
+description: "اپ اختصاصی VPN روویک — کلاینت واقعی V2Ray برای اندروید"
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  # موتور واقعی VPN — هسته Xray/V2Ray روی اندروید.
+  flutter_v2ray: ^2.0.0
+  # دیپ‌لینک: rovik://import و App Link ‏https://rovikvpn.shop/app/import
+  app_links: ^7.2.2
+  file_picker: ^13.4.0
+  http: ^1.2.0
+  shared_preferences: ^2.3.0
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # فونت وزیرمتن — داخل خود اپ باندل شده تا متن فارسی روی همه
+  # دستگاه‌ها (حتی بدون اینترنت) درست نمایش داده شود.
+  fonts:
+    - family: Vazirmatn
+      fonts:
+        - asset: assets/fonts/Vazirmatn-Regular.ttf
