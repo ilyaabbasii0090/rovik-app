@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../models/models.dart';
 import '../services/app_api.dart';
+import '../services/best_server.dart';
 import '../services/ping_service.dart';
 import '../services/sublink_parser.dart';
 import '../services/subscription_store.dart';
@@ -47,6 +48,12 @@ class _HomeScreenState extends State<HomeScreen>
   bool _loadingSub = true;
   bool _refreshingPing = false;
   bool _importing = false;
+  // true یعنی کاربر خودش دستی یک سرور را زده است؛ در این حالت انتخاب
+  // خودکار سریع‌ترین سرور دیگر انتخاب او را عوض نمی‌کند.
+  bool _manualSelection = false;
+  // اپراتور انتخاب‌شده برای تست بهترین سرور؛ null یعنی همه سرورها.
+  String? _activeOperator;
+  bool _operatorTesting = false;
   String? _subUrl;
   VpnStatusSnapshot _vpnStatus = const VpnStatusSnapshot();
   VpnConnectionState _vpnState = VpnConnectionState.disconnected;
@@ -99,10 +106,12 @@ class _HomeScreenState extends State<HomeScreen>
       final configs = await widget.store.loadConfigs();
       final subUrl = await widget.store.loadSubUrl();
       final selected = await widget.store.loadSelectedIndex();
+      final manual = await widget.store.loadManualSelection();
       if (!mounted) return;
       setState(() {
         _configs = configs;
         _subUrl = subUrl;
+        _manualSelection = manual;
         _selected = configs.isEmpty
             ? 0
             : selected.clamp(0, configs.length - 1);
@@ -114,7 +123,12 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
     await _refreshSubInfo();
-    if (_configs.isNotEmpty) _refreshPings();
+    // بعد از لود، همه سرورها با پینگ واقعی تست می‌شوند و اگر کاربر
+    // قبلاً دستی سروری را انتخاب نکرده باشد، سریع‌ترین سرور
+    // به‌صورت خودکار انتخاب می‌شود.
+    if (_configs.isNotEmpty) {
+      await _refreshPings(autoSelect: !_manualSelection);
+    }
   }
 
   Future<void> _refreshSubInfo() async {
@@ -135,7 +149,16 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  Future<void> _refreshPings() async {
+  /// همه سرورها را با پینگ واقعی TCP تست می‌کند.
+  ///
+  /// اگر [autoSelect] درست باشد و کاربر دستی سروری را انتخاب نکرده
+  /// باشد، بعد از تست، سریع‌ترین سرور (کمترین پینگ) به‌صورت خودکار
+  /// انتخاب می‌شود. اگر [announce] درست باشد، انتخاب خودکار با پیام
+  /// به کاربر گفته می‌شود.
+  Future<void> _refreshPings({
+    bool autoSelect = false,
+    bool announce = false,
+  }) async {
     if (_configs.isEmpty || _refreshingPing) return;
     setState(() => _refreshingPing = true);
     for (var i = 0; i < _configs.length; i++) {
@@ -144,7 +167,25 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() => _configs[i].pingMs = ms);
     }
     await widget.store.saveConfigs(_configs);
-    if (mounted) setState(() => _refreshingPing = false);
+    if (!mounted) return;
+    setState(() => _refreshingPing = false);
+    if (autoSelect && !_manualSelection) _autoSelectFastest(announce: announce);
+  }
+
+  /// سریع‌ترین سرور (کمترین پینگ) را انتخاب می‌کند.
+  ///
+  /// اگر هیچ پینگی ثبت نشده باشد، انتخاب عوض نمی‌شود.
+  /// برمی‌گرداند آیا انتخاب عوض شد.
+  bool _autoSelectFastest({bool announce = false}) {
+    final bestIdx = BestServer.fastestIndex(_configs);
+    if (bestIdx == null) return false;
+    final changed = bestIdx != _selected;
+    setState(() => _selected = bestIdx);
+    widget.store.saveSelectedIndex(bestIdx);
+    if (announce && changed) {
+      _snack('سریع‌ترین سرور انتخاب شد: ${_configs[bestIdx].name}');
+    }
+    return changed;
   }
 
   /// ایمپورت اشتراک از ساب‌لینک (دیپ‌لینک یا فایل روویک).
@@ -161,15 +202,19 @@ class _HomeScreenState extends State<HomeScreen>
       await widget.store.saveSubUrl(subUrl);
       await widget.store.saveConfigs(configs);
       await widget.store.saveSelectedIndex(0);
+      // ایمپورت تازه یعنی انتخاب خودکار از اول شروع می‌شود.
+      await widget.store.saveManualSelection(false);
       if (!mounted) return;
       setState(() {
         _configs = configs;
         _subUrl = subUrl;
         _selected = 0;
+        _manualSelection = false;
+        _activeOperator = null;
       });
       _snack('${configs.length} کانفیگ وارد شد.');
       await _refreshSubInfo();
-      await _refreshPings();
+      await _refreshPings(autoSelect: true, announce: true);
     } catch (e) {
       _snack('ایمپورت ممکن نشد: $e');
     } finally {
@@ -238,18 +283,42 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _selectBest() {
-    final withPing =
-        _configs.where((c) => c.pingMs != null).toList()
-          ..sort((a, b) => a.pingMs!.compareTo(b.pingMs!));
-    if (withPing.isEmpty) {
+    if (_configs.isEmpty) return;
+    final bestIdx = BestServer.fastestIndex(_configs);
+    if (bestIdx == null) {
       _snack('اول دکمه تازه‌سازی را بزن تا پینگ سرورها تست شود.');
       return;
     }
-    final best = withPing.first;
-    final idx = _configs.indexOf(best);
-    setState(() => _selected = idx);
-    widget.store.saveSelectedIndex(idx);
-    _snack('بهترین سرور انتخاب شد: ${best.name}');
+    setState(() => _selected = bestIdx);
+    widget.store.saveSelectedIndex(bestIdx);
+    _snack('بهترین سرور انتخاب شد: ${_configs[bestIdx].name}');
+  }
+
+  /// تست بهترین سرور برای یک اپراتور.
+  ///
+  /// کاربر روی اپراتور خودش (همراه اول / ایرانسل / رایتل) می‌زند؛ اپ
+  /// همه سرورها را با اینترنت همین لحظه کاربر (روی همان اپراتور) با
+  /// پینگ واقعی TCP دوباره تست می‌کند، سریع‌ترین را انتخاب می‌کند و
+  /// سه تای برتر را جداگانه نشان می‌دهد. زدن دوباره همان اپراتور،
+  /// فیلتر را برمی‌دارد.
+  Future<void> _testForOperator(String name) async {
+    if (_configs.isEmpty) {
+      _snack('هنوز سروری نداری — اول اشتراک وارد کن.');
+      return;
+    }
+    if (_operatorTesting || _refreshingPing) return;
+    if (_activeOperator == name) {
+      setState(() => _activeOperator = null);
+      return;
+    }
+    setState(() {
+      _activeOperator = name;
+      _operatorTesting = true;
+    });
+    await _refreshPings(autoSelect: true);
+    if (!mounted) return;
+    setState(() => _operatorTesting = false);
+    _snack('بهترین سرورها برای $name بر اساس پینگ فعلی‌ات آماده شد.');
   }
 
   void _goBuy() {
@@ -292,6 +361,9 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _configs = [];
       _selected = 0;
+      _manualSelection = false;
+      _activeOperator = null;
+      _operatorTesting = false;
       _subInfo = null;
       _subUrl = null;
       _vpnStatus = const VpnStatusSnapshot();
@@ -335,6 +407,8 @@ class _HomeScreenState extends State<HomeScreen>
                   _connectionCard(),
                   const SizedBox(height: 14),
                   _packageCard(),
+                  const SizedBox(height: 18),
+                  _operatorSection(),
                   const SizedBox(height: 18),
                   _serversHeader(),
                   const SizedBox(height: 10),
@@ -782,6 +856,275 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  /// بخش «بهترین سرور برای اپراتور من» — سه دکمه همراه اول، ایرانسل و
+  /// رایتل، دقیقاً بالای لیست سرورها.
+  Widget _operatorSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Row(
+          children: [
+            Icon(
+              Icons.signal_cellular_alt,
+              size: 18,
+              color: RovikTheme.neonCyan,
+            ),
+            SizedBox(width: 6),
+            Text(
+              'بهترین سرور برای اپراتور من',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: RovikTheme.textMain,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'روی اپراتورت بزن تا سرورها با اینترنت همین لحظه‌ات تست شوند و بهترین‌ها را ببینی.',
+          style: TextStyle(fontSize: 12, color: RovikTheme.textMuted),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            for (final op in _operatorOptions)
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: op == _operatorOptions.last ? 0 : 8,
+                  ),
+                  child: _operatorButton(op),
+                ),
+              ),
+          ],
+        ),
+        if (_activeOperator != null) ...[
+          const SizedBox(height: 10),
+          _operatorResultCard(),
+        ],
+      ],
+    );
+  }
+
+  Widget _operatorButton(_OperatorOption op) {
+    final active = _activeOperator == op.name;
+    final busy = _operatorTesting && active;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: (_operatorTesting || _refreshingPing) && !active
+            ? null
+            : () => _testForOperator(op.name),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+          decoration: BoxDecoration(
+            gradient: active
+                ? LinearGradient(
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                    colors: [op.color, op.color2],
+                  )
+                : null,
+            color: active ? null : RovikTheme.bgCard,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: active ? Colors.transparent : op.color.withValues(alpha: 0.55),
+              width: 1.5,
+            ),
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: op.color.withValues(alpha: 0.45),
+                      blurRadius: 16,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              if (busy)
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                )
+              else
+                Icon(
+                  active ? Icons.check_circle : op.icon,
+                  size: 22,
+                  color: active ? op.onColor : op.color,
+                ),
+              const SizedBox(height: 6),
+              Text(
+                op.name,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: active ? op.onColor : RovikTheme.textMain,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                active
+                    ? (busy ? 'در حال تست…' : 'انتخاب شد')
+                    : 'تست بهترین سرور',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: active
+                      ? op.onColor.withValues(alpha: 0.85)
+                      : RovikTheme.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// سه سرور برتر برای اپراتور انتخاب‌شده (بر اساس تازه‌ترین پینگ).
+  /// زدن روی هر ردیف، همان سرور را دستی انتخاب می‌کند.
+  Widget _operatorResultCard() {
+    final op = _operatorOptions.firstWhere(
+      (o) => o.name == _activeOperator,
+      orElse: () => _operatorOptions.first,
+    );
+    final ranked = BestServer.ranked(_configs)
+        .where((c) => c.pingMs != null)
+        .take(3)
+        .toList();
+    return Card(
+      color: RovikTheme.bgCardLight,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.emoji_events_outlined, size: 18, color: op.color),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'بهترین سرورها برای ${op.name}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: RovikTheme.textMain,
+                    ),
+                  ),
+                ),
+                if (_operatorTesting)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (ranked.isEmpty)
+              const Text(
+                'هنوز پینگی ثبت نشده — کمی صبر کن تا تست تمام شود.',
+                style: TextStyle(color: RovikTheme.textMuted),
+              )
+            else
+              for (var i = 0; i < ranked.length; i++)
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom: i == ranked.length - 1 ? 0 : 8,
+                  ),
+                  child: _operatorResultRow(ranked[i], i, op.color),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _operatorResultRow(VpnConfig cfg, int rank, Color accent) {
+    final selected = _configs.indexOf(cfg) == _selected;
+    const medals = ['🥇', '🥈', '🥉'];
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          final idx = _configs.indexOf(cfg);
+          if (idx < 0) return;
+          setState(() {
+            _selected = idx;
+            _manualSelection = true;
+          });
+          widget.store.saveSelectedIndex(idx);
+          widget.store.saveManualSelection(true);
+          _snack('انتخاب شد: ${cfg.name}');
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? accent.withValues(alpha: 0.15)
+                : RovikTheme.bgDeep.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? accent.withValues(alpha: 0.6)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            children: [
+              Text(medals[rank], style: const TextStyle(fontSize: 18)),
+              const SizedBox(width: 8),
+              Text(cfg.flag, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  cfg.name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: RovikTheme.textMain,
+                  ),
+                ),
+              ),
+              if (selected)
+                Icon(Icons.check_circle, size: 18, color: accent),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: RovikTheme.bgDeep.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  PingService.formatPing(cfg.pingMs),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: RovikTheme.textMain,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _serversHeader() {
     return Row(
       children: [
@@ -875,8 +1218,14 @@ class _HomeScreenState extends State<HomeScreen>
       color: selected ? RovikTheme.bgCardLight : RovikTheme.bgCard,
       child: InkWell(
         onTap: () {
-          setState(() => _selected = index);
+          // انتخاب دستی کاربر؛ از اینجا به بعد انتخاب خودکار
+          // سریع‌ترین سرور، انتخاب او را عوض نمی‌کند.
+          setState(() {
+            _selected = index;
+            _manualSelection = true;
+          });
           widget.store.saveSelectedIndex(index);
+          widget.store.saveManualSelection(true);
         },
         borderRadius: BorderRadius.circular(18),
         child: Padding(
@@ -965,6 +1314,56 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 }
+
+/// یک اپراتور موبایل با استایل اختصاصی خودش.
+///
+/// هر اپراتور رنگ برند خودش را دارد تا در یک نگاه از هم جدا شوند:
+/// همراه اول آبی، ایرانسل زرد، رایتل بنفش.
+class _OperatorOption {
+  const _OperatorOption({
+    required this.name,
+    required this.color,
+    required this.color2,
+    required this.onColor,
+    required this.icon,
+  });
+
+  final String name;
+
+  /// رنگ اصلی برند.
+  final Color color;
+
+  /// رنگ دوم گرادیان دکمه فعال.
+  final Color color2;
+
+  /// رنگ متن/آیکون روی دکمه فعال.
+  final Color onColor;
+  final IconData icon;
+}
+
+const _operatorOptions = [
+  _OperatorOption(
+    name: 'همراه اول',
+    color: Color(0xFF1E88E5),
+    color2: Color(0xFF00BCD4),
+    onColor: Colors.white,
+    icon: Icons.signal_cellular_alt,
+  ),
+  _OperatorOption(
+    name: 'ایرانسل',
+    color: Color(0xFFFFC107),
+    color2: Color(0xFFFF8F00),
+    onColor: Color(0xFF212121),
+    icon: Icons.sim_card,
+  ),
+  _OperatorOption(
+    name: 'رایتل',
+    color: Color(0xFF7C3AED),
+    color2: Color(0xFFAB47BC),
+    onColor: Colors.white,
+    icon: Icons.network_cell,
+  ),
+];
 
 /// کپی کردن متن در کلیپ‌بورد با پیام تأیید.
 Future<void> copyToClipboard(BuildContext context, String text) async {

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rovik_app/models/models.dart';
+import 'package:rovik_app/services/best_server.dart';
 import 'package:rovik_app/services/ping_service.dart';
 import 'package:rovik_app/services/rovik_file.dart';
 import 'package:rovik_app/services/sublink_parser.dart';
@@ -138,6 +139,34 @@ void main() {
         ),
         isNull,
       );
+    });
+  });
+
+  group('انتخاب سریع‌ترین سرور', () {
+    VpnConfig cfg(String name, int? ping) => VpnConfig(
+          link: 'vless://uuid@1.1.1.1:443#$name',
+          name: name,
+          protocol: 'vless',
+          host: '1.1.1.1',
+          port: 443,
+          pingMs: ping,
+        );
+
+    test('کمترین پینگ انتخاب می‌شود', () {
+      final configs = [cfg('a', 120), cfg('b', 42), cfg('c', 300)];
+      expect(BestServer.fastestIndex(configs), 1);
+    });
+
+    test('بدون پینگ، انتخابی نیست', () {
+      final configs = [cfg('a', null), cfg('b', null)];
+      expect(BestServer.fastestIndex(configs), isNull);
+      expect(BestServer.fastestIndex([]), isNull);
+    });
+
+    test('بدون پینگ آخر صف می‌رود', () {
+      final configs = [cfg('a', null), cfg('b', 90), cfg('c', 50)];
+      final ranked = BestServer.ranked(configs);
+      expect(ranked.map((c) => c.name).toList(), ['c', 'b', 'a']);
     });
   });
 

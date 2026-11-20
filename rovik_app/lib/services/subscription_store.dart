@@ -14,6 +14,7 @@ class SubscriptionStore {
   static const _kSubUrl = 'rovik_sub_url_v1';
   static const _kSelectedIndex = 'rovik_selected_index_v1';
   static const _kUsername = 'rovik_username_v1';
+  static const _kManualSelection = 'rovik_manual_selection_v1';
 
   Future<List<VpnConfig>> loadConfigs() async {
     final prefs = await SharedPreferences.getInstance();
@@ -69,11 +70,27 @@ class SubscriptionStore {
     await prefs.setInt(_kSelectedIndex, index);
   }
 
+  /// آیا کاربر خودش دستی یک سرور را انتخاب کرده است؟
+  ///
+  /// اگر true باشد، انتخاب خودکار سریع‌ترین سرور دیگر انتخاب کاربر را
+  /// عوض نمی‌کند؛ اگر false باشد، بعد از هر بار تست پینگ، سریع‌ترین
+  /// سرور به‌صورت خودکار انتخاب می‌شود.
+  Future<bool> loadManualSelection() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kManualSelection) ?? false;
+  }
+
+  Future<void> saveManualSelection(bool manual) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kManualSelection, manual);
+  }
+
   Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kConfigs);
     await prefs.remove(_kSubUrl);
     await prefs.remove(_kSelectedIndex);
+    await prefs.remove(_kManualSelection);
     await prefs.remove(_kUsername);
   }
 }
