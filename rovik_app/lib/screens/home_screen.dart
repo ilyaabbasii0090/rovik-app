@@ -355,7 +355,6 @@ class _HomeScreenState extends State<HomeScreen>
         builder: (_) => BuyScreen(
           api: widget.api,
           hasService: _subInfo?.active == true,
-          onImported: (url) => _importSubscription(url),
         ),
       ),
     );
@@ -365,7 +364,6 @@ class _HomeScreenState extends State<HomeScreen>
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SettingsScreen(
-          onImportSub: (url) => _importSubscription(url),
           onLogout: _logout,
         ),
       ),
@@ -1340,7 +1338,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 SizedBox(height: 6),
                 Text(
-                  'اشتراک بخر یا ساب‌لینکت را وارد کن.',
+                  'از ربات روویک اشتراک بخر و دکمه سبز «متصل به برنامه» را بزن.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: RovikTheme.textMuted),
                 ),

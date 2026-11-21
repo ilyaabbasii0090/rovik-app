@@ -28,5 +28,5 @@ class RovikConfig {
       'https://rovikvpn.shop/dl/rovik.apk';
 
   /// نسخه نصب‌شده (باید با pubspec.yaml هماهنگ بماند).
-  static const String appVersion = '1.0.3';
+  static const String appVersion = '1.0.4';
 }

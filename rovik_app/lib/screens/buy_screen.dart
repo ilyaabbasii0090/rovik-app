@@ -21,12 +21,10 @@ class BuyScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.hasService,
-    required this.onImported,
   });
 
   final RovikApi api;
   final bool hasService;
-  final void Function(String subUrl) onImported;
 
   @override
   State<BuyScreen> createState() => _BuyScreenState();

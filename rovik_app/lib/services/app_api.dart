@@ -156,7 +156,7 @@ class RovikApi {
   /// دانلود ساب‌لینک: بدنه base64 برمی‌گردد.
   Future<String> fetchSublink(String subUrl) async {
     final uri = Uri.parse(subUrl);
-    final res = await _http.get(uri).timeout(const Duration(seconds: 15));
+    final res = await _http.get(uri).timeout(const Duration(seconds: 30));
     if (res.statusCode != 200) {
       throw Exception('دریافت اشتراک ممکن نشد (کد ${res.statusCode}).');
     }
