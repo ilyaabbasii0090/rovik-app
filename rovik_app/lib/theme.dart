@@ -14,6 +14,25 @@ class RovikTheme {
   static const Color mint = Color(0xFF34D399);
   static const Color textMain = Color(0xFFF2F6FF);
   static const Color textMuted = Color(0xFF9FB0D0);
+  static const Color slate = Color(0xFF6B7FA8);
+  static const Color hairline = Color(0x14FFFFFF);
+
+  /// رنگ پینگ: سبز زیر ۱۵۰، طلایی زیر ۳۰۰، قرمز بالاتر؛ بدون پینگ خاکستری.
+  static Color pingColor(int? ms) => ms == null
+      ? textMuted
+      : ms < 150
+          ? mint
+          : ms < 300
+              ? gold
+              : coral;
+
+  static List<BoxShadow> softShadow() => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.28),
+          blurRadius: 18,
+          offset: const Offset(0, 8),
+        ),
+      ];
 
   static ThemeData dark() {
     const colorScheme = ColorScheme.dark(
@@ -47,6 +66,7 @@ class RovikTheme {
           backgroundColor: neonBlue,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+          elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -93,10 +113,26 @@ class RovikTheme {
       cardTheme: const CardThemeData(
         color: bgCard,
         elevation: 0,
+        margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(20)),
+          borderRadius: BorderRadius.all(Radius.circular(24)),
+          side: BorderSide(color: hairline),
         ),
       ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: bgCardLight,
+        contentTextStyle: const TextStyle(
+          fontFamily: 'Vazirmatn',
+          color: textMain,
+          fontSize: 14,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: hairline),
+        ),
+      ),
+      splashFactory: InkSparkle.splashFactory,
       chipTheme: ChipThemeData(
         backgroundColor: bgCard,
         selectedColor: neonBlue.withValues(alpha: 0.35),

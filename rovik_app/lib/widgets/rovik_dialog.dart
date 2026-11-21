@@ -22,15 +22,15 @@ Future<void> showRovikDialog(
   switch (kind) {
     case RovikDialogKind.success:
       accent = RovikTheme.mint;
-      icon = Icons.check_circle_outline;
+      icon = Icons.check_circle_outline_rounded;
       break;
     case RovikDialogKind.error:
       accent = RovikTheme.coral;
-      icon = Icons.error_outline;
+      icon = Icons.error_outline_rounded;
       break;
     case RovikDialogKind.info:
       accent = RovikTheme.gold;
-      icon = Icons.info_outline;
+      icon = Icons.info_outline_rounded;
       break;
   }
   return showDialog<void>(
@@ -40,7 +40,8 @@ Future<void> showRovikDialog(
     builder: (ctx) => Dialog(
       backgroundColor: RovikTheme.bgCardLight,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(28),
+        side: BorderSide(color: accent.withValues(alpha: 0.25)),
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 32),
       child: Padding(

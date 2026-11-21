@@ -429,43 +429,78 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(gradient: RovikTheme.pageGradient),
-      child: Scaffold(
+      child: Stack(
+        children: [
+          // درخشش محیطی بالای صفحه: متصل سبز، قطع آبی آرام.
+          Positioned(
+            top: -140,
+            left: -60,
+            right: -60,
+            child: IgnorePointer(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeOutCubic,
+                height: 380,
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    colors: [
+                      (_connected ? RovikTheme.mint : RovikTheme.neonBlue)
+                          .withValues(alpha: _connected ? 0.20 : 0.16),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
           child: RefreshIndicator(
+            color: RovikTheme.neonCyan,
+            backgroundColor: RovikTheme.bgCardLight,
             onRefresh: () async {
               await _refreshSubInfo();
               await _refreshPings();
             },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _topBar(),
+                  _FadeIn(index: 0, child: _topBar()),
+                  const SizedBox(height: 24),
+                  _FadeIn(index: 1, child: _connectionCard()),
                   const SizedBox(height: 16),
-                  _connectionCard(),
-                  const SizedBox(height: 14),
-                  _packageCard(),
-                  const SizedBox(height: 18),
-                  _operatorSection(),
-                  const SizedBox(height: 18),
-                  _serversHeader(),
-                  const SizedBox(height: 10),
-                  if (_hasConfigs) ...[
-                    _autoSelectRow(),
-                    const SizedBox(height: 8),
-                  ],
-                  _serversList(),
-                  const SizedBox(height: 18),
-                  _bottomButtons(),
-                  const SizedBox(height: 12),
+                  _FadeIn(index: 2, child: _packageCard()),
+                  const SizedBox(height: 24),
+                  _FadeIn(index: 3, child: _operatorSection()),
+                  const SizedBox(height: 24),
+                  _FadeIn(
+                    index: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _serversHeader(),
+                        const SizedBox(height: 8),
+                        if (_hasConfigs) ...[
+                          _autoSelectRow(),
+                          const SizedBox(height: 8),
+                        ],
+                        _serversList(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _FadeIn(index: 5, child: _bottomButtons()),
+                  const SizedBox(height: 16),
                   const Text(
                     'سایت‌ها و اپ‌های ایرانی بدون فیلترشکن باز می‌شوند.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
+                      height: 1.6,
                       color: RovikTheme.textMuted,
                     ),
                   ),
@@ -475,6 +510,8 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
       ),
+        ],
+      ),
     );
   }
 
@@ -482,14 +519,22 @@ class _HomeScreenState extends State<HomeScreen>
     return Row(
       children: [
         Container(
-          width: 46,
-          height: 46,
+          width: 48,
+          height: 48,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
               colors: [RovikTheme.neonBlue, RovikTheme.neonCyan],
             ),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: RovikTheme.neonGlow(),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: RovikTheme.neonBlue.withValues(alpha: 0.35),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           alignment: Alignment.center,
           child: const Text(
@@ -501,7 +546,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -509,7 +554,8 @@ class _HomeScreenState extends State<HomeScreen>
               const Text(
                 'روویک',
                 style: TextStyle(
-                  fontSize: 19,
+                  fontSize: 20,
+                  height: 1.3,
                   fontWeight: FontWeight.w900,
                   color: RovikTheme.textMain,
                 ),
@@ -520,6 +566,7 @@ class _HomeScreenState extends State<HomeScreen>
                     : (_hasConfigs ? 'کاربر روویک' : 'مهمان'),
                 style: const TextStyle(
                   fontSize: 12,
+                  height: 1.4,
                   color: RovikTheme.textMuted,
                 ),
               ),
@@ -527,19 +574,19 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
         _topIconButton(
-          icon: Icons.school_outlined,
+          icon: Icons.school_rounded,
           tooltip: 'آموزش اتصال',
           onPressed: _goTutorial,
         ),
         const SizedBox(width: 8),
         _topIconButton(
-          icon: Icons.settings_outlined,
+          icon: Icons.settings_rounded,
           tooltip: 'تنظیمات',
           onPressed: _goSettings,
         ),
         const SizedBox(width: 8),
         _topIconButton(
-          icon: Icons.logout,
+          icon: Icons.logout_rounded,
           tooltip: 'خروج',
           onPressed: _logout,
         ),
@@ -547,7 +594,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// دکمه دایره‌ای ظریف نوار بالا.
+  /// دکمه دایره‌ای ظریف نوار بالا (همه آیکون‌ها هم‌اندازه و هم‌وزن).
   Widget _topIconButton({
     required IconData icon,
     required String tooltip,
@@ -555,237 +602,303 @@ class _HomeScreenState extends State<HomeScreen>
   }) {
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: RovikTheme.bgCard,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.06),
-              ),
-            ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 20, color: RovikTheme.textMain),
+      child: _Pressable(
+        onTap: onPressed,
+        scale: 0.9,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: RovikTheme.bgCard,
+            shape: BoxShape.circle,
+            border: Border.all(color: RovikTheme.hairline),
           ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 20, color: RovikTheme.textMain),
         ),
       ),
     );
   }
 
-  /// کارت بزرگ اتصال — مثل زونیکس: دکمه پاور یک طرف، وضعیت و مدت
-  /// اتصال و دکمه قطع طرف دیگر، و پایین کارت سرعت زنده دانلود/آپلود.
+  /// کارت بزرگ اتصال: دکمه پاور یک طرف، وضعیت و مدت اتصال طرف دیگر
+  /// و پایین کارت سرعت زنده. متصل: درخشش سبز ملایم؛ قطع: آبی-خاکستری آرام.
   Widget _connectionCard() {
     final cfg = _selectedConfig;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 9,
-                            height: 9,
-                            decoration: BoxDecoration(
-                              color: _connected
-                                  ? RovikTheme.mint
-                                  : RovikTheme.textMuted,
-                              shape: BoxShape.circle,
-                              boxShadow: _connected
-                                  ? [
-                                      BoxShadow(
-                                        color: RovikTheme.mint.withValues(
-                                          alpha: 0.7,
-                                        ),
-                                        blurRadius: 8,
-                                        spreadRadius: 1,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              _connected
-                                  ? 'متصل به ${cfg?.flag ?? ''} ${cfg?.name ?? ''}'
-                                  : 'قطع',
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                                color: RovikTheme.textMain,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (_connected) ...[
-                        Row(
-                          children: [
-                            const Text(
-                              'مدت اتصال',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: RovikTheme.textMuted,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _elapsed,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: RovikTheme.textMain,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 42,
-                          child: ElevatedButton(
-                            onPressed: _busy ? null : _toggleConnect,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                            ),
-                            child: const Text('قطع اتصال'),
-                          ),
-                        ),
-                      ] else
-                        Text(
-                          _hasConfigs
-                              ? 'برای اتصال، دکمه را بزن'
-                              : 'هنوز کانفیگی نداری',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: RovikTheme.textMuted,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 14),
-                _powerButton(),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Divider(
-              height: 1,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: _speedCell(
-                    'دانلود',
-                    Icons.arrow_downward,
-                    _vpnStatus.downloadSpeed,
-                    _vpnStatus.downloadTotal,
-                    RovikTheme.neonCyan,
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  height: 44,
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-                Expanded(
-                  child: _speedCell(
-                    'آپلود',
-                    Icons.arrow_upward,
-                    _vpnStatus.uploadSpeed,
-                    _vpnStatus.uploadTotal,
-                    RovikTheme.mint,
-                  ),
-                ),
-              ],
-            ),
-          ],
+    final statusText = _connected
+        ? 'متصل به ${cfg?.flag ?? ''} ${cfg?.name ?? ''}'
+        : _vpnState == VpnConnectionState.connecting
+            ? 'در حال اتصال…'
+            : _vpnState == VpnConnectionState.disconnecting
+                ? 'در حال قطع…'
+                : 'قطع';
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: _connected
+              ? const [Color(0xFF0E2F3B), RovikTheme.bgCard]
+              : const [RovikTheme.bgCardLight, RovikTheme.bgCard],
         ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: _connected
+              ? RovikTheme.mint.withValues(alpha: 0.35)
+              : RovikTheme.hairline,
+        ),
+        boxShadow: _connected
+            ? [
+                BoxShadow(
+                  color: RovikTheme.mint.withValues(alpha: 0.14),
+                  blurRadius: 32,
+                  spreadRadius: 1,
+                ),
+              ]
+            : RovikTheme.softShadow(),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: _connected
+                                ? RovikTheme.mint
+                                : RovikTheme.slate,
+                            shape: BoxShape.circle,
+                            boxShadow: _connected
+                                ? [
+                                    BoxShadow(
+                                      color: RovikTheme.mint
+                                          .withValues(alpha: 0.7),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            child: Text(
+                              statusText,
+                              key: ValueKey(statusText),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                height: 1.4,
+                                fontWeight: FontWeight.w800,
+                                color: RovikTheme.textMain,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: _connected
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'مدت اتصال',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: RovikTheme.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _elapsed,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: RovikTheme.textMain,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  height: 40,
+                                  child: ElevatedButton(
+                                    onPressed: _busy ? null : _toggleConnect,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          RovikTheme.bgCardLight,
+                                      foregroundColor: RovikTheme.textMain,
+                                      side: BorderSide(
+                                        color: RovikTheme.coral
+                                            .withValues(alpha: 0.5),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                      ),
+                                    ),
+                                    child: const Text('قطع اتصال'),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                _hasConfigs
+                                    ? 'برای اتصال، دکمه را بزن'
+                                    : 'هنوز کانفیگی نداری',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  height: 1.6,
+                                  color: RovikTheme.textMuted,
+                                ),
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              _powerButton(),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Divider(height: 1, color: Colors.white.withValues(alpha: 0.08)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _speedCell(
+                  'دانلود',
+                  Icons.arrow_downward_rounded,
+                  _vpnStatus.downloadSpeed,
+                  _vpnStatus.downloadTotal,
+                  RovikTheme.neonCyan,
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 48,
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+              Expanded(
+                child: _speedCell(
+                  'آپلود',
+                  Icons.arrow_upward_rounded,
+                  _vpnStatus.uploadSpeed,
+                  _vpnStatus.uploadTotal,
+                  RovikTheme.mint,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  /// دکمه پاور بزرگ با حلقه‌های موج‌دار ظریف پشت آن (مثل زونیکس).
-  /// متصل: حلقه سبز + درخشش؛ قطع: گرادیان آبی خاموش.
+  /// دکمه پاور با حلقه‌های موج‌دار. متصل: حلقه و درخشش سبز نبض‌دار؛
+  /// قطع: آبی-خاکستری آرام. فشردن: کوچک‌شدن نرم.
   Widget _powerButton() {
-    return GestureDetector(
+    final accent = _connected ? RovikTheme.mint : RovikTheme.neonBlue;
+    return _Pressable(
+      enabled: !_busy,
+      scale: 0.93,
       onTap: _busy ? null : _toggleConnect,
       child: SizedBox(
-        width: 116,
-        height: 116,
+        width: 132,
+        height: 132,
         child: AnimatedBuilder(
           animation: _pulse,
           builder: (context, child) {
-            final glow = _connected ? 0.35 + 0.25 * _pulse.value : 0.15;
+            final t = _connected ? _pulse.value : 0.0;
+            final glow = _connected ? 0.30 + 0.25 * t : 0.12;
             return Stack(
               alignment: Alignment.center,
+              clipBehavior: Clip.none,
               children: [
-                for (final d in [176.0, 148.0, 124.0])
+                for (final entry in const [(132.0, 0.0), (114.0, 0.5)])
                   Container(
-                    width: d,
-                    height: d,
+                    width: entry.$1 + (_connected ? 4 * t : 0),
+                    height: entry.$1 + (_connected ? 4 * t : 0),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.05),
+                        color: _connected
+                            ? RovikTheme.mint.withValues(
+                                alpha: 0.10 + 0.10 * (1 - t) - entry.$2 * 0.04,
+                              )
+                            : Colors.white.withValues(alpha: 0.05),
                       ),
                     ),
                   ),
-                Container(
-                  width: 100,
-                  height: 100,
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  width: 96,
+                  height: 96,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: _connected
-                          ? RovikTheme.mint
-                          : const Color(0xFF3A4A6B),
-                      width: 3,
+                      color: Colors.white.withValues(alpha: 0.18),
+                      width: 2,
                     ),
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: _connected
-                          ? [RovikTheme.mint, const Color(0xFF0E9F6E)]
-                          : [RovikTheme.neonBlue, const Color(0xFF155E9C)],
+                          ? const [RovikTheme.mint, Color(0xFF0E9F6E)]
+                          : const [Color(0xFF3D6BD6), Color(0xFF22408F)],
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: (_connected
-                                ? RovikTheme.mint
-                                : RovikTheme.neonBlue)
-                            .withValues(alpha: glow),
-                        blurRadius: 30,
-                        spreadRadius: 2,
+                        color: accent.withValues(alpha: glow),
+                        blurRadius: 28,
+                        spreadRadius: 1,
                       ),
                     ],
                   ),
                   alignment: Alignment.center,
-                  child: _busy
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Icon(
-                          Icons.power_settings_new,
-                          size: 50,
-                          color: Colors.white,
-                        ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: _busy
+                        ? const SizedBox(
+                            key: ValueKey('busy'),
+                            width: 36,
+                            height: 36,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.power_settings_new_rounded,
+                            key: ValueKey('power'),
+                            size: 48,
+                            color: Colors.white,
+                          ),
+                  ),
                 ),
               ],
             );
@@ -815,44 +928,41 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             const SizedBox(width: 4),
-            Icon(icon, size: 14, color: color),
+            Icon(icon, size: 16, color: color),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 8),
         Text(
           FaFormat.speed(speed),
           style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+            fontSize: 17,
+            height: 1.3,
+            fontWeight: FontWeight.w800,
             color: RovikTheme.textMain,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 4),
         Text(
           'مجموع ${FaFormat.bytes(total)}',
-          style: const TextStyle(
-            fontSize: 11,
-            color: RovikTheme.textMuted,
-          ),
+          style: const TextStyle(fontSize: 11, color: RovikTheme.textMuted),
         ),
       ],
     );
   }
 
-  /// کارت بسته — مثل زونیکس: نام بسته و برچسب وضعیت، نوار پیشرفت
-  /// گرادیانی (حجم باقی‌مانده) و دو عدد بزرگ حجم و روزهای باقی‌مانده.
+  /// کارت بسته: نام بسته و برچسب وضعیت، نوار پیشرفت و دو عدد بزرگ.
   Widget _packageCard() {
     final info = _subInfo;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 const Icon(
-                  Icons.workspace_premium_outlined,
+                  Icons.workspace_premium_rounded,
                   color: RovikTheme.gold,
                   size: 20,
                 ),
@@ -861,22 +971,28 @@ class _HomeScreenState extends State<HomeScreen>
                   child: Text(
                     'بسته من',
                     style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
                       color: RovikTheme.textMain,
                     ),
                   ),
                 ),
-                Container(
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
+                    horizontal: 16,
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
                     color: (info?.active == true)
-                        ? RovikTheme.mint.withValues(alpha: 0.18)
-                        : RovikTheme.textMuted.withValues(alpha: 0.15),
+                        ? RovikTheme.mint.withValues(alpha: 0.16)
+                        : RovikTheme.textMuted.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: (info?.active == true)
+                          ? RovikTheme.mint.withValues(alpha: 0.35)
+                          : RovikTheme.hairline,
+                    ),
                   ),
                   child: Text(
                     info == null
@@ -886,7 +1002,7 @@ class _HomeScreenState extends State<HomeScreen>
                             : 'بسته غیرفعال',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
                       color: info?.active == true
                           ? RovikTheme.mint
                           : RovikTheme.textMuted,
@@ -895,22 +1011,29 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             if (_loadingSub)
               const Center(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: CircularProgressIndicator(),
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  ),
                 ),
               )
             else if (info == null)
               const Text(
                 'پس از ایمپورت اشتراک، اطلاعات بسته اینجا می‌آید.',
-                style: TextStyle(color: RovikTheme.textMuted),
+                style: TextStyle(
+                  height: 1.7,
+                  color: RovikTheme.textMuted,
+                ),
               )
             else ...[
               _remainingBar(1 - info.usedFraction),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               Row(
                 children: [
                   Expanded(
@@ -921,7 +1044,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   Container(
                     width: 1,
-                    height: 44,
+                    height: 48,
                     color: Colors.white.withValues(alpha: 0.08),
                   ),
                   Expanded(
@@ -941,22 +1064,32 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// نوار پیشرفت گرادیانی آبی؛ از راست (شروع RTL) پر می‌شود و
-  /// حجم باقی‌مانده را نشان می‌دهد.
+  /// نوار پیشرفت گرادیانی؛ از راست پر می‌شود، نرم انیمیت می‌شود و
+  /// با کم‌شدن حجم طلایی و بعد قرمز می‌شود.
   Widget _remainingBar(double remainingFraction) {
+    final f = remainingFraction.clamp(0.0, 1.0);
+    final colors = f < 0.1
+        ? const [RovikTheme.coral, Color(0xFFFF8F6B)]
+        : f < 0.25
+            ? const [RovikTheme.gold, Color(0xFFFFAA4D)]
+            : const [RovikTheme.neonBlue, RovikTheme.neonCyan];
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        height: 10,
-        color: RovikTheme.textMuted.withValues(alpha: 0.2),
+        height: 12,
+        color: RovikTheme.textMuted.withValues(alpha: 0.18),
         alignment: Alignment.centerRight,
-        child: FractionallySizedBox(
-          alignment: Alignment.centerRight,
-          widthFactor: remainingFraction.clamp(0.0, 1.0),
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [RovikTheme.neonBlue, RovikTheme.neonCyan],
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: f),
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeOutCubic,
+          builder: (context, v, _) => FractionallySizedBox(
+            alignment: Alignment.centerRight,
+            widthFactor: v,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: colors),
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
           ),
@@ -972,8 +1105,9 @@ class _HomeScreenState extends State<HomeScreen>
           value,
           textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+            fontSize: 24,
+            height: 1.3,
+            fontWeight: FontWeight.w800,
             color: RovikTheme.textMain,
           ),
         ),
@@ -981,17 +1115,13 @@ class _HomeScreenState extends State<HomeScreen>
         Text(
           label,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 12,
-            color: RovikTheme.textMuted,
-          ),
+          style: const TextStyle(fontSize: 12, color: RovikTheme.textMuted),
         ),
       ],
     );
   }
 
-  /// بخش «بهترین سرور برای اپراتور من» — سه چیپ جمع‌وجور همراه اول،
-  /// ایرانسل و رایتل، دقیقاً بالای لیست سرورها.
+  /// بخش «بهترین سرور برای اپراتور من» با سه چیپ همراه اول، ایرانسل، رایتل.
   Widget _operatorSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -999,16 +1129,16 @@ class _HomeScreenState extends State<HomeScreen>
         const Row(
           children: [
             Icon(
-              Icons.signal_cellular_alt,
-              size: 18,
+              Icons.signal_cellular_alt_rounded,
+              size: 20,
               color: RovikTheme.neonCyan,
             ),
-            SizedBox(width: 6),
+            SizedBox(width: 8),
             Text(
               'بهترین سرور برای اپراتور من',
               style: TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w800,
                 color: RovikTheme.textMain,
               ),
             ),
@@ -1019,7 +1149,7 @@ class _HomeScreenState extends State<HomeScreen>
           'اپراتورت را بزن؛ بهترین سرور برای آن تست می‌شود.',
           style: TextStyle(fontSize: 12, color: RovikTheme.textMuted),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 16),
         Row(
           children: [
             for (final op in _operatorOptions)
@@ -1033,92 +1163,99 @@ class _HomeScreenState extends State<HomeScreen>
               ),
           ],
         ),
-        if (_activeOperator != null) ...[
-          const SizedBox(height: 10),
-          _operatorResultCard(),
-        ],
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _activeOperator != null
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: _operatorResultCard(),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
       ],
     );
   }
 
-  /// چیپ جمع‌وجور اپراتور: نقطه رنگ برند + نام؛ فعال با گرادیان برند.
+  /// چیپ اپراتور: نقطه رنگ برند + نام؛ فعال با گرادیان برند.
   Widget _operatorChip(_OperatorOption op) {
     final active = _activeOperator == op.name;
     final busy = _operatorTesting && active;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: (_operatorTesting || _refreshingPing) && !active
-            ? null
-            : () => _testForOperator(op.name),
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            gradient: active
-                ? LinearGradient(
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                    colors: [op.color, op.color2],
-                  )
-                : null,
-            color: active ? null : RovikTheme.bgCard,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: active
-                  ? Colors.transparent
-                  : op.color.withValues(alpha: 0.5),
-              width: 1.2,
-            ),
-            boxShadow: active
-                ? [
-                    BoxShadow(
-                      color: op.color.withValues(alpha: 0.4),
-                      blurRadius: 14,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (busy)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: Colors.white,
-                  ),
+    final blocked = (_operatorTesting || _refreshingPing) && !active;
+    return _Pressable(
+      enabled: !blocked,
+      onTap: blocked ? null : () => _testForOperator(op.name),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        height: 56,
+        decoration: BoxDecoration(
+          gradient: active
+              ? LinearGradient(
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                  colors: [op.color, op.color2],
                 )
-              else
-                Icon(
-                  active ? Icons.check : op.icon,
-                  size: 18,
-                  color: active ? op.onColor : op.color,
-                ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  op.name,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: active ? op.onColor : RovikTheme.textMain,
+              : null,
+          color: active ? null : RovikTheme.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active
+                ? Colors.transparent
+                : op.color.withValues(alpha: blocked ? 0.2 : 0.5),
+            width: 1.2,
+          ),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: op.color.withValues(alpha: 0.35),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
                   ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (busy)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            else
+              Icon(
+                active ? Icons.check_rounded : op.icon,
+                size: 20,
+                color: active ? op.onColor : op.color,
+              ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                op.name,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: active ? op.onColor : RovikTheme.textMain,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  /// سه سرور برتر برای اپراتور انتخاب‌شده (بر اساس تازه‌ترین پینگ).
-  /// زدن روی هر ردیف، همان سرور را دستی انتخاب می‌کند.
+  /// سه سرور برتر برای اپراتور انتخاب‌شده؛ زدن روی ردیف، آن را دستی
+  /// انتخاب می‌کند.
   Widget _operatorResultCard() {
     final op = _operatorOptions.firstWhere(
       (o) => o.name == _activeOperator,
@@ -1131,20 +1268,20 @@ class _HomeScreenState extends State<HomeScreen>
     return Card(
       color: RovikTheme.bgCardLight,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.emoji_events_outlined, size: 18, color: op.color),
-                const SizedBox(width: 6),
+                Icon(Icons.emoji_events_rounded, size: 20, color: op.color),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'بهترین سرورها برای ${op.name}',
                     style: const TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w800,
                       color: RovikTheme.textMain,
                     ),
                   ),
@@ -1157,7 +1294,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 16),
             if (ranked.isEmpty)
               Text(
                 _operatorTesting ? 'در حال تست پینگ…' : 'پینگی ثبت نشده است.',
@@ -1180,56 +1317,55 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _operatorResultRow(VpnConfig cfg, int rank, Color accent) {
     final selected = _configs.indexOf(cfg) == _selected;
     const medals = ['🥇', '🥈', '🥉'];
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          final idx = _configs.indexOf(cfg);
-          if (idx < 0) return;
-          setState(() {
-            _selected = idx;
-            _manualSelection = true;
-          });
-          widget.store.saveSelectedIndex(idx);
-          widget.store.saveManualSelection(true);
-          _snack('انتخاب شد: ${cfg.name}');
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
+    return _Pressable(
+      scale: 0.98,
+      onTap: () {
+        final idx = _configs.indexOf(cfg);
+        if (idx < 0) return;
+        setState(() {
+          _selected = idx;
+          _manualSelection = true;
+        });
+        widget.store.saveSelectedIndex(idx);
+        widget.store.saveManualSelection(true);
+        _snack('انتخاب شد: ${cfg.name}');
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? accent.withValues(alpha: 0.15)
+              : RovikTheme.bgDeep.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
             color: selected
-                ? accent.withValues(alpha: 0.15)
-                : RovikTheme.bgDeep.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected
-                  ? accent.withValues(alpha: 0.6)
-                  : Colors.transparent,
-            ),
+                ? accent.withValues(alpha: 0.6)
+                : Colors.transparent,
           ),
-          child: Row(
-            children: [
-              Text(medals[rank], style: const TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              Text(cfg.flag, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  cfg.name,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: RovikTheme.textMain,
-                  ),
+        ),
+        child: Row(
+          children: [
+            Text(medals[rank], style: const TextStyle(fontSize: 18)),
+            const SizedBox(width: 8),
+            Text(cfg.flag, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                cfg.name,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: RovikTheme.textMain,
                 ),
               ),
-              if (selected)
-                Icon(Icons.check_circle, size: 18, color: accent),
+            ),
+            if (selected) ...[
+              Icon(Icons.check_circle_rounded, size: 20, color: accent),
               const SizedBox(width: 8),
-              _pingPill(cfg.pingMs),
             ],
-          ),
+            _pingPill(cfg.pingMs),
+          ],
         ),
       ),
     );
@@ -1238,67 +1374,90 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _serversHeader() {
     return Row(
       children: [
+        const Icon(Icons.dns_rounded, size: 20, color: RovikTheme.neonCyan),
+        const SizedBox(width: 8),
         Text(
           'سرورها (${FaFormat.number(_configs.length)})',
           style: const TextStyle(
             fontSize: 16,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w800,
             color: RovikTheme.textMain,
           ),
         ),
         const Spacer(),
-        IconButton(
-          onPressed: _refreshingPing ? null : _refreshPings,
-          icon: _refreshingPing
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.refresh),
-          tooltip: 'تازه‌سازی پینگ',
+        Tooltip(
+          message: 'تازه‌سازی پینگ',
+          child: _Pressable(
+            enabled: !_refreshingPing,
+            scale: 0.9,
+            onTap: _refreshingPing ? null : _refreshPings,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: RovikTheme.bgCard,
+                shape: BoxShape.circle,
+                border: Border.all(color: RovikTheme.hairline),
+              ),
+              alignment: Alignment.center,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: _refreshingPing
+                    ? const SizedBox(
+                        key: ValueKey('spin'),
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(
+                        Icons.refresh_rounded,
+                        key: ValueKey('refresh'),
+                        size: 20,
+                        color: RovikTheme.textMain,
+                      ),
+              ),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  /// ردیف «انتخاب خودکار» — مثل زونیکس، بالای لیست سرورها.
+  /// ردیف «انتخاب خودکار» بالای لیست سرورها.
   Widget _autoSelectRow() {
-    return Card(
-      child: InkWell(
-        onTap: _selectBest,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.radio_button_unchecked,
-                color: RovikTheme.textMuted,
-                size: 22,
-              ),
-              const SizedBox(width: 10),
-              const Icon(Icons.bolt, color: RovikTheme.gold, size: 18),
-              const SizedBox(width: 6),
-              const Expanded(
-                child: Text(
-                  'انتخاب خودکار',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: RovikTheme.textMain,
-                  ),
-                ),
-              ),
-              const Text(
-                'بهترین سرور',
+    return _Pressable(
+      scale: 0.98,
+      onTap: _selectBest,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: RovikTheme.bgCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: RovikTheme.hairline),
+        ),
+        child: const Row(
+          children: [
+            Icon(
+              Icons.bolt_rounded,
+              color: RovikTheme.gold,
+              size: 20,
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'انتخاب خودکار',
                 style: TextStyle(
-                  fontSize: 12,
-                  color: RovikTheme.textMuted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: RovikTheme.textMain,
                 ),
               ),
-            ],
-          ),
+            ),
+            Text(
+              'بهترین سرور',
+              style: TextStyle(fontSize: 12, color: RovikTheme.textMuted),
+            ),
+          ],
         ),
       ),
     );
@@ -1308,7 +1467,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_importing) {
       return const Card(
         child: Padding(
-          padding: EdgeInsets.all(20),
+          padding: EdgeInsets.all(24),
           child: Center(child: CircularProgressIndicator()),
         ),
       );
@@ -1317,30 +1476,45 @@ class _HomeScreenState extends State<HomeScreen>
       return Card(
         child: InkWell(
           onTap: _goBuy,
-          borderRadius: BorderRadius.circular(20),
-          child: const Padding(
-            padding: EdgeInsets.all(20),
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                Icon(
-                  Icons.cloud_off_outlined,
-                  size: 40,
-                  color: RovikTheme.textMuted,
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: RovikTheme.neonBlue.withValues(alpha: 0.12),
+                    border: Border.all(
+                      color: RovikTheme.neonBlue.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.cloud_off_rounded,
+                    size: 32,
+                    color: RovikTheme.neonCyan,
+                  ),
                 ),
-                SizedBox(height: 10),
-                Text(
+                const SizedBox(height: 16),
+                const Text(
                   'هنوز سروری نداری',
                   style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
                     color: RovikTheme.textMain,
                   ),
                 ),
-                SizedBox(height: 6),
-                Text(
+                const SizedBox(height: 8),
+                const Text(
                   'از ربات روویک اشتراک بخر و دکمه سبز «متصل به برنامه» را بزن.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: RovikTheme.textMuted),
+                  style: TextStyle(
+                    height: 1.8,
+                    fontSize: 13,
+                    color: RovikTheme.textMuted,
+                  ),
                 ),
               ],
             ),
@@ -1352,152 +1526,256 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         for (var i = 0; i < _configs.length; i++)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: EdgeInsets.only(bottom: i == _configs.length - 1 ? 0 : 8),
             child: _serverRow(_configs[i], i),
           ),
       ],
     );
   }
 
-  /// ردیف سرور — مثل زونیکس: رادیو، پرچم و نام، و پینگ؛
-  /// ردیف انتخاب‌شده حاشیه آبی دارد.
+  /// ردیف سرور: رادیو، پرچم، نام و پروتکل، و پینگ. ردیف انتخاب‌شده
+  /// حاشیه و درخشش آبی دارد.
   Widget _serverRow(VpnConfig cfg, int index) {
     final selected = index == _selected;
-    return Container(
-      decoration: BoxDecoration(
-        color: selected ? RovikTheme.bgCardLight : RovikTheme.bgCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: selected
-              ? RovikTheme.neonBlue.withValues(alpha: 0.8)
-              : Colors.transparent,
-          width: 1.5,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            // انتخاب دستی کاربر؛ از اینجا به بعد انتخاب خودکار
-            // سریع‌ترین سرور، انتخاب او را عوض نمی‌کند.
-            setState(() {
-              _selected = index;
-              _manualSelection = true;
-            });
-            widget.store.saveSelectedIndex(index);
-            widget.store.saveManualSelection(true);
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  color: selected
-                      ? RovikTheme.neonBlue
-                      : RovikTheme.textMuted,
-                  size: 22,
-                ),
-                const SizedBox(width: 10),
-                Text(cfg.flag, style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        cfg.name,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: RovikTheme.textMain,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        cfg.protocol.toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: RovikTheme.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _pingPill(cfg.pingMs),
-              ],
-            ),
+    return _Pressable(
+      scale: 0.98,
+      onTap: () {
+        // انتخاب دستی کاربر؛ از اینجا به بعد انتخاب خودکار
+        // سریع‌ترین سرور، انتخاب او را عوض نمی‌کند.
+        setState(() {
+          _selected = index;
+          _manualSelection = true;
+        });
+        widget.store.saveSelectedIndex(index);
+        widget.store.saveManualSelection(true);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: selected ? RovikTheme.bgCardLight : RovikTheme.bgCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? RovikTheme.neonBlue.withValues(alpha: 0.8)
+                : RovikTheme.hairline,
+            width: selected ? 1.5 : 1,
           ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: RovikTheme.neonBlue.withValues(alpha: 0.18),
+                    blurRadius: 16,
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                key: ValueKey(selected),
+                color: selected ? RovikTheme.neonBlue : RovikTheme.textMuted,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Text(cfg.flag, style: const TextStyle(fontSize: 24)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    cfg.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.4,
+                      fontWeight: FontWeight.w800,
+                      color: RovikTheme.textMain,
+                    ),
+                  ),
+                  Text(
+                    cfg.protocol.toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      letterSpacing: 0.6,
+                      color: RovikTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _pingPill(cfg.pingMs),
+          ],
         ),
       ),
     );
   }
 
-  /// برچسب پینگ؛ رنگش با کیفیت پینگ عوض می‌شود.
+  /// برچسب پینگ با نقطه رنگی؛ سبز < ۱۵۰، طلایی < ۳۰۰، قرمز بالاتر.
   Widget _pingPill(int? pingMs) {
-    final color = pingMs == null
-        ? RovikTheme.textMuted
-        : pingMs < 150
-            ? RovikTheme.mint
-            : pingMs < 300
-                ? RovikTheme.gold
-                : RovikTheme.coral;
-    return Container(
+    final color = RovikTheme.pingColor(pingMs);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: RovikTheme.bgDeep.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(10),
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        PingService.formatPing(pingMs),
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: color,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            PingService.formatPing(pingMs),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  /// دکمه‌های پایین — مثل زونیکس: خرید/تمدید آبی (سمت راست) و
-  /// پشتیبانی تیره (سمت چپ).
+  /// دکمه‌های پایین: خرید/تمدید آبی و پشتیبانی تیره.
   Widget _bottomButtons() {
     return Row(
       children: [
         Expanded(
-          child: SizedBox(
-            height: 54,
-            child: ElevatedButton.icon(
-              onPressed: _goBuy,
-              icon: const Icon(Icons.shopping_cart_outlined, size: 20),
-              label: Text(
-                _subInfo?.active == true ? 'تمدید' : 'خرید / تمدید',
+          child: _Pressable(
+            scale: 0.97,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: RovikTheme.neonBlue.withValues(alpha: 0.30),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: SizedBox(
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: _goBuy,
+                  icon: const Icon(Icons.shopping_cart_rounded, size: 20),
+                  label: Text(
+                    _subInfo?.active == true ? 'تمدید' : 'خرید / تمدید',
+                  ),
+                ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 16),
         Expanded(
-          child: SizedBox(
-            height: 54,
-            child: OutlinedButton.icon(
-              onPressed: _openSupport,
-              icon: const Icon(Icons.headset_mic_outlined, size: 20),
-              label: const Text('پشتیبانی'),
-              style: OutlinedButton.styleFrom(
-                backgroundColor: RovikTheme.bgCard,
-                foregroundColor: RovikTheme.textMain,
-                side: BorderSide(
-                  color: RovikTheme.textMuted.withValues(alpha: 0.35),
+          child: _Pressable(
+            scale: 0.97,
+            child: SizedBox(
+              height: 56,
+              child: OutlinedButton.icon(
+                onPressed: _openSupport,
+                icon: const Icon(Icons.headset_mic_rounded, size: 20),
+                label: const Text('پشتیبانی'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: RovikTheme.bgCard,
+                  foregroundColor: RovikTheme.textMain,
+                  side: BorderSide(
+                    color: RovikTheme.textMuted.withValues(alpha: 0.3),
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// بازخورد فشردن: کوچک‌شدن نرم و سریع (بدون دخالت در ژست‌های داخلی).
+class _Pressable extends StatefulWidget {
+  const _Pressable({
+    required this.child,
+    this.onTap,
+    this.scale = 0.96,
+    this.enabled = true,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final double scale;
+  final bool enabled;
+
+  @override
+  State<_Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<_Pressable> {
+  bool _down = false;
+
+  void _set(bool v) {
+    if (!widget.enabled || _down == v) return;
+    setState(() => _down = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final inner = Listener(
+      onPointerDown: (_) => _set(true),
+      onPointerUp: (_) => _set(false),
+      onPointerCancel: (_) => _set(false),
+      child: AnimatedScale(
+        scale: _down && widget.enabled ? widget.scale : 1,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+    if (widget.onTap == null) return inner;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTap,
+      child: inner,
+    );
+  }
+}
+
+/// ورود نرم بخش‌ها: محو شدن + کمی بالا آمدن، با تأخیر پلکانی.
+class _FadeIn extends StatelessWidget {
+  const _FadeIn({required this.child, this.index = 0});
+
+  final Widget child;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: Duration(milliseconds: 220 + index * 60),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, c) => Opacity(
+        opacity: v,
+        child: Transform.translate(offset: Offset(0, (1 - v) * 14), child: c),
+      ),
+      child: child,
     );
   }
 }
@@ -1534,21 +1812,21 @@ const _operatorOptions = [
     color: Color(0xFF1E88E5),
     color2: Color(0xFF00BCD4),
     onColor: Colors.white,
-    icon: Icons.signal_cellular_alt,
+    icon: Icons.signal_cellular_alt_rounded,
   ),
   _OperatorOption(
     name: 'ایرانسل',
     color: Color(0xFFFFC107),
     color2: Color(0xFFFF8F00),
     onColor: Color(0xFF212121),
-    icon: Icons.sim_card,
+    icon: Icons.sim_card_rounded,
   ),
   _OperatorOption(
     name: 'رایتل',
     color: Color(0xFF7C3AED),
     color2: Color(0xFFAB47BC),
     onColor: Colors.white,
-    icon: Icons.network_cell,
+    icon: Icons.network_cell_rounded,
   ),
 ];
 
