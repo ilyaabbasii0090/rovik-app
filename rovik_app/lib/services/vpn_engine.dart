@@ -35,10 +35,17 @@ class VpnEngine {
 
   /// زمان شروع آخرین درخواست اتصال. پلاگین در همان ثانیه‌های اول
   /// ممکن است یک وضعیت گذرای DISCONNECTED بفرستد؛ تا وقتی اتصال
-  /// واقعاً برقرار نشده یا مهلت تمام نشده، آن را قطع‌شدن حساب نمی‌کنیم.
+  /// واقعاً برقرار نشده یا مهلت تلاش تمام نشده، آن را قطع‌شدن حساب نمی‌کنیم.
   DateTime? _connectStartedAt;
-  Timer? _connectWatchdog;
-  static const Duration _connectGrace = Duration(seconds: 20);
+
+  /// مهلت هر تلاش اتصال به یک سرور. اپ‌های کانفیگ معمولاً در ۱ تا ۳
+  /// ثانیه وصل می‌شوند؛ اگر سروری تا این مهلت وصل نشد، مرده حساب
+  /// می‌شود و سراغ سرور بعدی می‌رویم (به‌جای ۲۰ ثانیه چرخیدن روی یک
+  /// سرور و بعد بی‌صدا قطع شدن).
+  static const Duration perAttemptTimeout = Duration(seconds: 8);
+
+  /// کامل‌کننده‌ای که وقتی وضعیت «متصل» رسید، تلاش جاری را موفق اعلام می‌کند.
+  Completer<bool>? _connectCompleter;
 
   VpnConnectionState get state => _state;
   VpnStatusSnapshot get lastStatus => _last;
@@ -59,8 +66,10 @@ class VpnEngine {
           return;
         }
         if (mapped == VpnConnectionState.connected) {
-          _connectWatchdog?.cancel();
           _connectStartedAt = null;
+          final c = _connectCompleter;
+          if (c != null && !c.isCompleted) c.complete(true);
+          _connectCompleter = null;
         }
         _last = snap;
         _state = mapped;
@@ -73,6 +82,9 @@ class VpnEngine {
 
   /// اتصال مستقیم به کانفیگ انتخاب‌شده — بدون جست‌وجوی خودکار و
   /// بدون تست سرعت قبل از اتصال.
+  ///
+  /// اگر سرور تا پایان [perAttemptTimeout] وصل نشد، [VpnConnectException]
+  /// پرتاب می‌کند تا UI به‌جای چرخیدن بی‌صدا، دلیل را نشان دهد.
   Future<void> connect({
     required String remark,
     required String link,
@@ -83,46 +95,155 @@ class VpnEngine {
       );
     }
     await initialize();
+    final granted = await _client!.requestPermission();
+    if (!granted) {
+      _state = VpnConnectionState.disconnected;
+      _emit();
+      throw const VpnPermissionDenied();
+    }
+    final ok = await _tryConnectOne(
+      remark: remark,
+      link: link,
+      timeout: perAttemptTimeout,
+    );
+    if (!ok) {
+      try {
+        await disconnect();
+      } catch (_) {}
+      throw VpnConnectException(
+        'سرور $remark تا ${perAttemptTimeout.inSeconds} ثانیه وصل نشد.',
+      );
+    }
+  }
+
+  /// اتصال با تلاش خودکار روی چند سرور (سریع‌ترین اول).
+  ///
+  /// سرورها را به‌ترتیب امتحان می‌کند؛ هر سرور تا [perAttemptTimeout]
+  /// فرصت دارد «متصل» شود. اگر سروری وصل شد همان را برمی‌گرداند؛ اگر
+  /// هیچ‌کدام وصل نشد، نتیجه ناموفق برمی‌گرداند تا UI پیام درست نشان
+  /// دهد (به‌جای ۲۰ ثانیه چرخیدن روی یک سرور مرده و بعد بی‌صدا قطع شدن).
+  /// [onAttempt] قبل از هر تلاش صدا زده می‌شود تا UI نشان دهد روی کدام
+  /// سرور است.
+  Future<VpnConnectResult> connectWithFallback({
+    required List<({String remark, String link})> candidates,
+    Duration timeout = perAttemptTimeout,
+    void Function(String remark, int attempt, int total)? onAttempt,
+  }) async {
+    if (!isSupported) {
+      throw UnsupportedError(
+        'اتصال VPN فقط روی اندروید ممکن است.',
+      );
+    }
+    if (candidates.isEmpty) {
+      return const VpnConnectResult(
+        connected: false,
+        connectedRemark: null,
+        connectedLink: null,
+        triedCount: 0,
+      );
+    }
+    await initialize();
+    // اجازه VPN یک بار اول گرفته می‌شود؛ اگر داده نشد، تلاش روی سرورها بی‌فایده است.
+    final granted = await _client!.requestPermission();
+    if (!granted) {
+      _state = VpnConnectionState.disconnected;
+      _emit();
+      throw const VpnPermissionDenied();
+    }
+    var tried = 0;
+    for (var i = 0; i < candidates.length; i++) {
+      final c = candidates[i];
+      tried++;
+      onAttempt?.call(c.remark, i + 1, candidates.length);
+      bool ok = false;
+      try {
+        ok = await _tryConnectOne(
+          remark: c.remark,
+          link: c.link,
+          timeout: timeout,
+        );
+      } catch (_) {
+        // خطای پارس لینک یا استارت؛ سرور بعدی را امتحان کن.
+        ok = false;
+      }
+      if (ok || _state == VpnConnectionState.connected) {
+        // در لحظه آخر هم وصل شده بود، همان را قبول کن.
+        return VpnConnectResult(
+          connected: true,
+          connectedRemark: c.remark,
+          connectedLink: c.link,
+          triedCount: tried,
+        );
+      }
+      // این سرور وصل نشد؛ سرویس را کامل قطع کن تا تلاش بعدی تمیز شروع شود.
+      try {
+        await disconnect();
+      } catch (_) {}
+      // مکث کوتاه تا سرویس قبلی کامل جمع شود.
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (_state == VpnConnectionState.connected) {
+        return VpnConnectResult(
+          connected: true,
+          connectedRemark: c.remark,
+          connectedLink: c.link,
+          triedCount: tried,
+        );
+      }
+    }
+    return VpnConnectResult(
+      connected: false,
+      connectedRemark: null,
+      connectedLink: null,
+      triedCount: tried,
+    );
+  }
+
+  /// یک تلاش اتصال به یک سرور.
+  ///
+  /// اگر تا پایان [timeout] وضعیت «متصل» نیامد، false برمی‌گرداند
+  /// (بدون پرتاب خطا) تا تماس‌گیرنده سرور بعدی را امتحان کند.
+  /// اگر اجازه VPN داده نشد یا لینک خراب بود، خطا پرتاب می‌کند چون
+  /// این‌ها مشکل سرور نیستند و تلاش روی سرور بعدی فایده ندارد.
+  /// (اجازه VPN معمولاً قبل از حلقه توسط connectWithFallback گرفته شده؛
+  /// این متد برای سازگاری با connect تکی هم آن را می‌گیرد.)
+  Future<bool> _tryConnectOne({
+    required String remark,
+    required String link,
+    required Duration timeout,
+  }) async {
     _connectStartedAt = DateTime.now();
     _state = VpnConnectionState.connecting;
     _emit();
     final parser = FlutterV2ray.parseFromURL(link);
     final config = parser.getFullConfiguration();
-    final granted = await _client!.requestPermission();
-    if (!granted) {
-      _connectStartedAt = null;
-      _state = VpnConnectionState.disconnected;
-      _emit();
-      throw Exception('اجازه VPN داده نشد.');
-    }
     _connectStartedAt = DateTime.now();
+    final completer = Completer<bool>();
+    _connectCompleter = completer;
     await _client!.startV2Ray(
       remark: remark,
       config: config,
       proxyOnly: false,
       notificationDisconnectButtonName: 'قطع اتصال',
     );
-    // اگر تا پایان مهلت وضعیت «متصل» نیامد، به حالت قطع برمی‌گردیم.
-    _connectWatchdog?.cancel();
-    _connectWatchdog = Timer(_connectGrace, () {
-      if (_state == VpnConnectionState.connecting) {
-        _connectStartedAt = null;
-        _state = VpnConnectionState.disconnected;
-        _emit();
-      }
-    });
+    try {
+      return await completer.future.timeout(timeout, onTimeout: () => false);
+    } finally {
+      if (_connectCompleter == completer) _connectCompleter = null;
+    }
   }
 
   bool get _inConnectGrace =>
       _connectStartedAt != null &&
-      DateTime.now().difference(_connectStartedAt!) < _connectGrace;
+      DateTime.now().difference(_connectStartedAt!) < perAttemptTimeout;
 
   Future<void> disconnect() async {
     if (!isSupported || _client == null) {
       _state = VpnConnectionState.disconnected;
       return;
     }
-    _connectWatchdog?.cancel();
+    final c = _connectCompleter;
+    if (c != null && !c.isCompleted) c.complete(false);
+    _connectCompleter = null;
     _connectStartedAt = null;
     _state = VpnConnectionState.disconnecting;
     _emit();
@@ -153,7 +274,9 @@ class VpnEngine {
   }
 
   void dispose() {
-    _connectWatchdog?.cancel();
+    final c = _connectCompleter;
+    if (c != null && !c.isCompleted) c.complete(false);
+    _connectCompleter = null;
   }
 
   static VpnConnectionState _mapState(String raw) {
@@ -168,6 +291,43 @@ class VpnEngine {
         return VpnConnectionState.disconnected;
     }
   }
+}
+
+/// نتیجه تلاش اتصال با چند سرور.
+class VpnConnectResult {
+  const VpnConnectResult({
+    required this.connected,
+    required this.connectedRemark,
+    required this.connectedLink,
+    required this.triedCount,
+  });
+
+  /// آیا بالاخره یک سرور وصل شد؟
+  final bool connected;
+
+  /// نام سروری که وصل شد (اگر وصل شد).
+  final String? connectedRemark;
+
+  /// لینک سروری که وصل شد (اگر وصل شد).
+  final String? connectedLink;
+
+  /// چند سرور امتحان شد.
+  final int triedCount;
+}
+
+/// خطای اتصال به یک سرور (مهلت تمام شد یا هسته وصل نشد).
+class VpnConnectException implements Exception {
+  const VpnConnectException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// خطای اجازه VPN (کاربر اجازه نداد).
+class VpnPermissionDenied implements Exception {
+  const VpnPermissionDenied();
+  @override
+  String toString() => 'اجازه VPN داده نشد.';
 }
 
 /// عکس لحظه‌ای وضعیت که مستقیم از V2RayStatus پلاگین ساخته می‌شود.

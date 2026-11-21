@@ -59,6 +59,8 @@ class _HomeScreenState extends State<HomeScreen>
   String? _subUrl;
   VpnStatusSnapshot _vpnStatus = const VpnStatusSnapshot();
   VpnConnectionState _vpnState = VpnConnectionState.disconnected;
+  // نام سروری که همین حالا دارد امتحان می‌شود (در حین اتصال چندسروره).
+  String? _connectingTo;
   Timer? _durationTimer;
   String _elapsed = '۰۰:۰۰:۰۰';
   DateTime? _connectedSince;
@@ -243,11 +245,15 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _vpnStatus = snap;
       _vpnState = widget.engine.state;
+      if (_vpnState == VpnConnectionState.connected) {
+        _connectingTo = null;
+      }
       if (_vpnState == VpnConnectionState.connected &&
           _connectedSince == null) {
         _connectedSince = DateTime.now();
         _startElapsedTimer();
       } else if (_vpnState == VpnConnectionState.disconnected) {
+        _connectingTo = null;
         _connectedSince = null;
         _durationTimer?.cancel();
         _elapsed = '۰۰:۰۰:۰۰';
@@ -297,18 +303,67 @@ class _HomeScreenState extends State<HomeScreen>
     }
     setState(() => _vpnState = VpnConnectionState.connecting);
     try {
-      // اتصال مستقیم به کانفیگ انتخاب‌شده؛ بدون جست‌وجو و تست سرعت.
-      await widget.engine.connect(remark: cfg.name, link: cfg.link);
+      // اول سرور انتخاب‌شده، بعد بقیه سرورها به‌ترتیب پینگ (سریع‌ترین اول).
+      // اگر سروری وصل نشد، موتور خودش سراغ بعدی می‌رود؛ مثل بقیه اپ‌های
+      // کانفیگ که در یک ثانیه روی یک سرور سالم وصل می‌شوند.
+      final ordered = <VpnConfig>[];
+      ordered.add(cfg);
+      final rest = BestServer.ranked(_configs)
+          .where((c) => c.link != cfg.link)
+          .toList();
+      ordered.addAll(rest);
+      final result = await widget.engine.connectWithFallback(
+        candidates: [
+          for (final c in ordered) (remark: c.name, link: c.link),
+        ],
+        onAttempt: (remark, attempt, total) {
+          if (mounted) {
+            setState(() => _connectingTo = remark);
+          }
+        },
+      );
+      if (mounted) setState(() => _connectingTo = null);
+      if (!result.connected) {
+        // هیچ‌کدام از سرورها وصل نشد؛ دلیل را واضح بگو.
+        if (mounted) setState(() => _vpnState = VpnConnectionState.disconnected);
+        _showRovikDialog(
+          title: 'هیچ سروری وصل نشد',
+          message:
+              '${FaFormat.number(result.triedCount)} سرور امتحان شد و هیچ‌کدام وصل نشد. اینترنتت رو چک کن و اگر باز نشد، یک سرور دیگه رو دستی انتخاب کن.',
+          kind: RovikDialogKind.error,
+        );
+        return;
+      }
+      // اگر سرور دیگری (نه انتخاب‌شده) وصل شد، انتخاب را به همان عوض کن.
+      if (mounted && result.connectedLink != null) {
+        final idx = _configs.indexWhere((c) => c.link == result.connectedLink);
+        if (idx >= 0 && idx != _selected) {
+          setState(() {
+            _selected = idx;
+            _manualSelection = true;
+          });
+          widget.store.saveSelectedIndex(idx);
+          widget.store.saveManualSelection(true);
+        }
+      }
       // وضعیت نهایی (متصل) را خود موتور از طریق onStatus اعلام می‌کند؛
       // اینجا وضعیت قدیمی را دوباره نمی‌فرستیم تا اتصال تازه قطع‌شده
       // دیده نشود.
       if (mounted) setState(() => _vpnState = widget.engine.state);
-    } catch (_) {
-      setState(() => _vpnState = VpnConnectionState.disconnected);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _vpnState = VpnConnectionState.disconnected;
+          _connectingTo = null;
+        });
+      }
       _showRovikDialog(
         title: 'اتصال ممکن نشد',
-        message:
-            'اتصال ممکن نشد. اینترنتت رو چک کن و یک سرور دیگه رو امتحان کن.',
+        message: e is VpnPermissionDenied
+            ? 'اجازه VPN داده نشد. از تنظیمات گوشی اجازه VPN را بده و دوباره بزن.'
+            : e is VpnConnectException
+                ? e.message
+                : 'اتصال ممکن نشد. اینترنتت رو چک کن و یک سرور دیگه رو امتحان کن.',
         kind: RovikDialogKind.error,
       );
     }
@@ -653,7 +708,9 @@ class _HomeScreenState extends State<HomeScreen>
     final statusText = _connected
         ? 'متصل به ${cfg?.flag ?? ''} ${cfg?.name ?? ''}'
         : _vpnState == VpnConnectionState.connecting
-            ? 'در حال اتصال…'
+            ? (_connectingTo != null
+                ? 'در حال اتصال به $_connectingTo…'
+                : 'در حال اتصال…')
             : _vpnState == VpnConnectionState.disconnecting
                 ? 'در حال قطع…'
                 : 'قطع';
