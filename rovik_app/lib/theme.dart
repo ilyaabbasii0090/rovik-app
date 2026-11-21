@@ -48,7 +48,7 @@ class RovikTheme {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
           textStyle: const TextStyle(
             fontFamily: 'Vazirmatn',
@@ -63,7 +63,7 @@ class RovikTheme {
           side: const BorderSide(color: neonCyan),
           padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 20),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
           textStyle: const TextStyle(
             fontFamily: 'Vazirmatn',
@@ -94,7 +94,7 @@ class RovikTheme {
         color: bgCard,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(18)),
+          borderRadius: BorderRadius.all(Radius.circular(20)),
         ),
       ),
       chipTheme: ChipThemeData(
