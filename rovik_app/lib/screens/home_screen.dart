@@ -85,7 +85,10 @@ class _HomeScreenState extends State<HomeScreen>
     )..repeat(reverse: true);
     widget.importRequests.addListener(_onImportRequest);
     widget.engine.onStatus = _onEngineStatus;
-    widget.engine.initialize().catchError((_) {});
+    widget.engine.initialize().catchError((_) {
+      // خطا در گزارش عیب‌یابی موتور ثبت شده؛ هنگام اتصال دوباره و
+      // با دلیل کامل نشان داده می‌شود.
+    });
     _loadLocal();
   }
 
@@ -328,8 +331,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (mounted) setState(() => _vpnState = VpnConnectionState.disconnected);
         _showRovikDialog(
           title: 'هیچ سروری وصل نشد',
-          message:
-              '${FaFormat.number(result.triedCount)} سرور امتحان شد و هیچ‌کدام وصل نشد. اینترنتت رو چک کن و اگر باز نشد، یک سرور دیگه رو دستی انتخاب کن.',
+          message: _failureMessage(result),
           kind: RovikDialogKind.error,
         );
         return;
@@ -360,13 +362,37 @@ class _HomeScreenState extends State<HomeScreen>
       _showRovikDialog(
         title: 'اتصال ممکن نشد',
         message: e is VpnPermissionDenied
-            ? 'اجازه VPN داده نشد. از تنظیمات گوشی اجازه VPN را بده و دوباره بزن.'
+            ? 'اجازه VPN داده نشد. در پنجره اجازه VPN «تأیید» را بزن؛ اگر گوشی اجازه اعلان‌ها را هم خواست آن را هم بده، و دوباره بزن.'
             : e is VpnConnectException
-                ? e.message
-                : 'اتصال ممکن نشد. اینترنتت رو چک کن و یک سرور دیگه رو امتحان کن.',
+                ? '${e.message}\n\nگزارش کامل: دکمه پاور را نگه دار.'
+                : 'اتصال ممکن نشد: $e\n\nگزارش کامل: دکمه پاور را نگه دار.',
         kind: RovikDialogKind.error,
       );
     }
+  }
+
+  /// متن خطای «هیچ سروری وصل نشد» با دلیل دقیق هر سرور.
+  String _failureMessage(VpnConnectResult result) {
+    final buf = StringBuffer(
+      '${FaFormat.number(result.triedCount)} سرور امتحان شد و هیچ‌کدام وصل نشد.',
+    );
+    for (final f in result.failures.take(2)) {
+      buf.write('\n\n• $f');
+    }
+    if (result.failures.length > 2) {
+      buf.write('\n\n… و ${FaFormat.number(result.failures.length - 2)} مورد دیگر.');
+    }
+    buf.write('\n\nگزارش کامل: دکمه پاور را نگه دار.');
+    return buf.toString();
+  }
+
+  /// مسیر عیب‌یابی: نگه‌داشتن دکمه پاور، گزارش موتور را نشان می‌دهد.
+  void _showDiagnostics() {
+    _showRovikDialog(
+      title: 'گزارش عیب‌یابی',
+      message: widget.engine.diagnosticReport(),
+      kind: RovikDialogKind.info,
+    );
   }
 
   void _selectBest() {
@@ -885,7 +911,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// قطع: آبی-خاکستری آرام. فشردن: کوچک‌شدن نرم.
   Widget _powerButton() {
     final accent = _connected ? RovikTheme.mint : RovikTheme.neonBlue;
-    return _Pressable(
+    return GestureDetector(
+      onLongPress: _showDiagnostics,
+      child: _Pressable(
       enabled: !_busy,
       scale: 0.93,
       onTap: _busy ? null : _toggleConnect,
@@ -974,6 +1002,7 @@ class _HomeScreenState extends State<HomeScreen>
             );
           },
         ),
+      ),
       ),
     );
   }

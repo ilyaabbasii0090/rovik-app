@@ -29,8 +29,29 @@ android {
         versionName = flutter.versionName
     }
 
+    // ریشه‌ی اصلی «هسته هرگز استارت نمی‌خورد»:
+    // پلاگین flutter_v2ray فایل libtun2socks.so را به‌صورت «فایل اجرایی»
+    // از nativeLibraryDir اجرا می‌کند. با AGP جدید پیش‌فرض این است که
+    // کتابخانه‌ها استخراج نشوند و مستقیم از داخل APK مپ شوند؛ در این حالت
+    // آن مسیر وجود ندارد و tun2socks بی‌صدا اجرا نمی‌شود. APK سالم است
+    // (فایل‌ها داخلش هستند) ولی روی گوشی استخراج نمی‌شوند.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     buildTypes {
         release {
+            // R8 کلاس‌های gomobile ‏(go.* و libv2ray.*) را حذف/تغییر نام
+            // می‌دهد و libgojni.so دیگر نمی‌تواند آن‌ها را با JNI پیدا کند.
+            // برای اطمینان shrink خاموش است و قواعد keep هم اضافه شده.
+            isMinifyEnabled = false
+            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
