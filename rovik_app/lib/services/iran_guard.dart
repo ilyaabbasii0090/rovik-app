@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'native_bridge.dart';
 import 'vpn_engine.dart';
 
-/// تنظیمات «قطع خودکار برای اپ‌های ایرانی».
+/// تنظیمات «اپ‌های ایرانی» (bypass تک‌اپ: ترافیک این اپ‌ها مستقیم می‌رود).
 class IranGuardPrefs {
   static const _kEnabled = 'rovik_iran_guard_enabled_v1';
   static const _kAdded = 'rovik_iran_guard_added_v1';
@@ -56,7 +56,7 @@ class IranGuardPrefs {
     await p.setStringList(_kRemoved, removed.toList());
   }
 
-  /// مجموعه نهایی پکیج‌هایی که با باز شدنشان VPN قطع می‌شود.
+  /// مجموعه نهایی پکیج‌هایی که ترافیکشان مستقیم (بدون VPN) می‌رود.
   static Future<Set<String>> effective(List<InstalledApp> installed) async {
     final added = await loadAdded();
     final removed = await loadRemoved();
@@ -69,64 +69,31 @@ class IranGuardPrefs {
   }
 }
 
-/// قطع خودکار VPN وقتی اپ ایرانی جلوی صفحه است و وصل فوری بعد از خروج.
+/// اعمال فهرست اپ‌های ایرانی روی موتور VPN (bypass تک‌اپ، بدون هیچ مجوز).
 ///
-/// - فقط اتصالی را برمی‌گرداند که خودش قطع کرده؛ اگر VPN از اول خاموش
-///   بود، هرگز آن را روشن نمی‌کند.
-/// - وصل دوباره با همان مسیر [VpnEngine.connectWithFallback] انجام می‌شود
-///   (سروری که قبلاً وصل بود اول، بعد بقیه به ترتیب).
-/// - بدون مجوز Usage Access هیچ کاری نمی‌کند.
+/// - VPN همیشه روشن می‌ماند؛ ترافیک اپ‌های فهرست مستقیم (آی‌پی ایران) می‌رود
+///   و بقیه ترافیک روی VPN می‌ماند.
+/// - فهرست فقط موقع استارت VPN اثر دارد؛ پس اگر موقع وصل بودن کلید یا فهرست
+///   عوض شد، یک بار اتصال تمیز قطع و با همان مسیر
+///   [VpnEngine.connectWithFallback] (سروری که وصل بود اول) دوباره وصل می‌شود.
+/// - اگر قابلیت خاموش است، فهرست خالی می‌ماند و VPN مثل قبل کار می‌کند.
 class IranGuard {
   IranGuard({required this.engine, required this.candidates});
 
   final VpnEngine engine;
   final List<({String remark, String link})> Function() candidates;
 
-  /// پکیج‌های سیستمی که ظاهر شدنشان به معنی عوض شدن اپ نیست
-  /// (پنجره مجوز، سایه اعلان‌ها، ...).
-  static const Set<String> _ignored = {
-    'android',
-    'com.android.systemui',
-    'com.google.android.permissioncontroller',
-    'com.android.permissioncontroller',
-    'com.miui.securitycenter',
-    'com.lbe.security.miui',
-  };
+  /// امضای فهرستی که روی اتصال فعلی اعمال شده (برای تشخیص نیاز به وصل مجدد).
+  String _appliedSignature = '';
+  String _wantedSignature = '';
+  Timer? _debounce;
+  bool _reconnecting = false;
+  bool _disposed = false;
 
-  Timer? _timer;
-  bool _busy = false;
-  bool _pausedByGuard = false;
-  Set<String> _apps = <String>{};
-
-  bool get isRunning => _timer != null;
-
-  /// تنظیمات را دوباره می‌خواند و ردیاب را روشن/خاموش می‌کند.
-  Future<void> refresh() async {
-    _timer?.cancel();
-    _timer = null;
-    engine.bypassIranDomains = false;
-    if (!VpnEngine.isSupported) return;
-    final enabled = await IranGuardPrefs.loadEnabled();
-    if (!enabled) {
-      _pausedByGuard = false;
-      return;
-    }
-    if (!await NativeBridge.hasUsageAccess()) {
-      _pausedByGuard = false;
-      return; // بدون مجوز، قابلیت خاموش است و VPN مثل قبل کار می‌کند.
-    }
-    final installed = await NativeBridge.installedApps();
-    _apps = await IranGuardPrefs.effective(installed);
-    engine.bypassIranDomains = true;
-    _timer = Timer.periodic(
-      const Duration(milliseconds: 800),
-      (_) => _tick(),
-    );
-  }
-
-  void dispose() {
-    _timer?.cancel();
-    _timer = null;
+  static String _signature(bool enabled, Set<String> apps) {
+    if (!enabled) return '';
+    final l = apps.toList()..sort();
+    return l.join(',');
   }
 
   List<({String remark, String link})> _ordered() {
@@ -138,38 +105,62 @@ class IranGuard {
     return [list[idx], ...list.where((c) => c.link != first)];
   }
 
-  Future<void> _tick() async {
-    if (_busy) return;
-    _busy = true;
+  /// تنظیمات را دوباره می‌خواند و روی موتور اعمال می‌کند. اگر VPN وصل است و
+  /// تنظیمات عوض شده، با کمی تأخیر (برای جمع شدن چند تیک پشت‌سرهم) اتصال را
+  /// تمیز قطع و دوباره وصل می‌کند.
+  Future<void> refresh() async {
+    if (!VpnEngine.isSupported) return;
+    final enabled = await IranGuardPrefs.loadEnabled();
+    var apps = <String>{};
+    if (enabled) {
+      final installed = await NativeBridge.installedApps();
+      apps = await IranGuardPrefs.effective(installed);
+    }
+    if (_disposed) return;
+    engine.bypassIranDomains = enabled;
+    engine.blockedApps = enabled ? (apps.toList()..sort()) : const <String>[];
+    _wantedSignature = _signature(enabled, apps);
+
+    if (engine.state != VpnConnectionState.connected) {
+      // وصل نیست: فهرست جدید روی اتصال بعدی اثر می‌کند.
+      _debounce?.cancel();
+      _appliedSignature = _wantedSignature;
+      return;
+    }
+    if (_wantedSignature == _appliedSignature) return;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 1200), _reconnect);
+  }
+
+  /// اتصال را کامل قطع و با فهرست جدید دوباره وصل می‌کند.
+  Future<void> _reconnect() async {
+    if (_reconnecting || _disposed) return;
+    if (engine.state != VpnConnectionState.connected) {
+      _appliedSignature = _wantedSignature;
+      return;
+    }
+    _reconnecting = true;
     try {
-      final fg = await NativeBridge.foregroundPackage();
-      if (fg == null || _ignored.contains(fg)) return;
-      final iran = _apps.contains(fg);
-      final st = engine.state;
-      if (iran) {
-        if (st == VpnConnectionState.connected) {
-          // اپ ایرانی باز شد: اتصال را قطع کن و یادت بماند که خودت قطع کردی.
-          _pausedByGuard = true;
-          await engine.disconnect();
-        }
-        return;
-      }
-      if (!_pausedByGuard) return;
-      if (st == VpnConnectionState.connected) {
-        _pausedByGuard = false; // کاربر خودش دوباره وصل کرده.
-        return;
-      }
-      if (st != VpnConnectionState.disconnected) return;
-      // از اپ ایرانی بیرون آمد: همان لحظه وصل شو.
-      _pausedByGuard = false;
       final list = _ordered();
       if (list.isEmpty) return;
-      await engine.connectWithFallback(candidates: list);
+      await engine.disconnect();
+      await Future.delayed(const Duration(milliseconds: 1500));
+      final r = await engine.connectWithFallback(candidates: list);
+      if (r.connected) _appliedSignature = _wantedSignature;
     } catch (_) {
-      // شکست وصل خودکار در گزارش عیب‌یابی موتور ثبت می‌شود؛ حلقه تکرار نمی‌شود.
-      _pausedByGuard = false;
+      // شکست وصل مجدد در گزارش عیب‌یابی موتور ثبت می‌شود.
     } finally {
-      _busy = false;
+      _reconnecting = false;
     }
+  }
+
+  /// موتور هر بار که استارت می‌شود فهرست فعلی را استفاده می‌کند؛ این متد
+  /// را بعد از اتصال دستیِ کاربر صدا بزن تا امضای اعمال‌شده هم‌گام شود.
+  void markApplied() => _appliedSignature = _wantedSignature;
+
+  void dispose() {
+    _disposed = true;
+    _debounce?.cancel();
+    _debounce = null;
   }
 }

@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import '../services/iran_guard.dart';
 import '../services/native_bridge.dart';
 import '../theme.dart';
-import '../widgets/rovik_dialog.dart';
 
-/// کارت تنظیمات «قطع خودکار برای اپ‌های ایرانی» (داخل صفحه تنظیمات).
+/// کارت تنظیمات «اپ‌های ایرانی» (داخل صفحه تنظیمات).
 class IranGuardCard extends StatefulWidget {
   const IranGuardCard({super.key, this.onChanged});
 
@@ -16,59 +15,29 @@ class IranGuardCard extends StatefulWidget {
   State<IranGuardCard> createState() => _IranGuardCardState();
 }
 
-class _IranGuardCardState extends State<IranGuardCard>
-    with WidgetsBindingObserver {
+class _IranGuardCardState extends State<IranGuardCard> {
   bool _enabled = false;
-  bool _hasAccess = false;
   bool _loaded = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // برگشت از صفحه تنظیمات اندروید: وضعیت مجوز را دوباره بخوان.
-    if (state == AppLifecycleState.resumed) _load(notify: true);
-  }
-
-  Future<void> _load({bool notify = false}) async {
+  Future<void> _load() async {
     final enabled = await IranGuardPrefs.loadEnabled();
-    final access = await NativeBridge.hasUsageAccess();
     if (!mounted) return;
     setState(() {
       _enabled = enabled;
-      _hasAccess = access;
       _loaded = true;
     });
-    if (notify) widget.onChanged?.call();
   }
 
   Future<void> _toggle(bool v) async {
     await IranGuardPrefs.saveEnabled(v);
     setState(() => _enabled = v);
-    if (v && !await NativeBridge.hasUsageAccess()) {
-      if (!mounted) return;
-      await showRovikDialog(
-        context,
-        title: 'دسترسی لازم است',
-        message:
-            'برای تشخیص اینکه کدام اپ جلوی صفحه است، گوشی باید به روویک اجازه «دسترسی به استفاده از اپ‌ها (Usage Access)» بدهد. در صفحه‌ای که باز می‌شود روویک را پیدا کن و آن را روشن کن.',
-        kind: RovikDialogKind.info,
-      );
-      await NativeBridge.openUsageAccessSettings();
-    }
     widget.onChanged?.call();
-    await _load();
   }
 
   Future<void> _openApps() async {
@@ -81,7 +50,6 @@ class _IranGuardCardState extends State<IranGuardCard>
 
   @override
   Widget build(BuildContext context) {
-    final inactive = _loaded && _enabled && !_hasAccess;
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -92,21 +60,13 @@ class _IranGuardCardState extends State<IranGuardCard>
                 Icons.swap_horiz_rounded,
                 color: RovikTheme.mint,
               ),
-              title: const Text('قطع خودکار برای اپ‌های ایرانی'),
+              title: const Text('اپ‌های ایرانی بدون قطع VPN'),
               subtitle: const Text(
-                'وقتی اپی مثل همراه بانک را باز کنی، VPN خودش قطع می‌شود و به‌محض خروج از آن اپ دوباره وصل می‌شود. سایت‌های «.ir» هم مستقیم باز می‌شوند.',
+                'VPN همیشه روشن می‌ماند و اپ‌هایی مثل همراه بانک خودکار با آی‌پی ایران کار می‌کنند؛ بقیه ترافیک روی VPN می‌ماند. سایت‌های «.ir» هم مستقیم باز می‌شوند.',
               ),
               value: _enabled,
               onChanged: _loaded ? _toggle : null,
             ),
-            if (inactive)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(
-                  'این قابلیت فعال نیست چون دسترسی «Usage Access» به روویک داده نشده. VPN مثل قبل کار می‌کند. برای فعال شدن، کلید را خاموش و دوباره روشن کن و دسترسی را بده.',
-                  style: TextStyle(color: RovikTheme.coral, height: 1.7),
-                ),
-              ),
             ListTile(
               leading: const Icon(
                 Icons.apps_rounded,
@@ -124,7 +84,7 @@ class _IranGuardCardState extends State<IranGuardCard>
   }
 }
 
-/// فهرست اپ‌های نصب‌شده؛ تیک‌خورده‌ها با باز شدنشان VPN قطع می‌شود.
+/// فهرست اپ‌های نصب‌شده؛ ترافیک تیک‌خورده‌ها مستقیم (آی‌پی ایران) می‌رود.
 class IranAppsScreen extends StatefulWidget {
   const IranAppsScreen({super.key, this.onChanged});
 
@@ -215,7 +175,7 @@ class _IranAppsScreenState extends State<IranAppsScreen> {
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
-                'اپ‌های تیک‌خورده با باز شدنشان VPN را قطع می‌کنند.',
+                'ترافیک اپ‌های تیک‌خورده بدون VPN و مستقیم می‌رود؛ VPN روشن می‌ماند.',
                 style: TextStyle(color: RovikTheme.textMuted),
               ),
             ),

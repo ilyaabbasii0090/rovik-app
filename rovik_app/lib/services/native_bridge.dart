@@ -10,8 +10,8 @@ class InstalledApp {
   final String label;
 }
 
-/// پل نیتیو اندروید (MainActivity.kt): آمار ترافیک، مجوز Usage Access،
-/// اپِ جلوی صفحه و فهرست اپ‌های نصب‌شده.
+/// پل نیتیو اندروید (MainActivity.kt): آمار ترافیک و فهرست اپ‌های نصب‌شده
+/// (هیچ‌کدام مجوز خاصی نمی‌خواهند).
 class NativeBridge {
   static const MethodChannel _ch = MethodChannel('com.rovikvpn.app/native');
 
@@ -27,32 +27,6 @@ class NativeBridge {
       final tx = (r[1] as num).toInt();
       if (rx < 0 || tx < 0) return null;
       return (rx: rx, tx: tx);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static Future<bool> hasUsageAccess() async {
-    if (!_ok) return false;
-    try {
-      return await _ch.invokeMethod<bool>('hasUsageAccess') ?? false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Future<void> openUsageAccessSettings() async {
-    if (!_ok) return;
-    try {
-      await _ch.invokeMethod<void>('openUsageAccessSettings');
-    } catch (_) {}
-  }
-
-  /// پکیج اپی که الان جلوی صفحه است (null اگر معلوم نیست).
-  static Future<String?> foregroundPackage() async {
-    if (!_ok) return null;
-    try {
-      return await _ch.invokeMethod<String>('foregroundPackage');
     } catch (_) {
       return null;
     }

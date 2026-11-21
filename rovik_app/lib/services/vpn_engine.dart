@@ -55,7 +55,14 @@ class VpnEngine {
   /// (توسط IranGuard ست می‌شود؛ فقط روی اتصال بعدی اثر دارد.)
   bool bypassIranDomains = false;
 
-  /// لینک آخرین سروری که واقعاً وصل شد (برای وصل سریع بعد از قطع خودکار).
+  /// پکیج اپ‌هایی که ترافیکشان مستقیم (بدون VPN، با آی‌پی ایران) می‌رود.
+  /// به‌صورت `blockedApps` به startV2Ray پلاگین داده می‌شود (bypass تک‌اپ
+  /// بدون هیچ مجوزی). فقط موقع استارت VPN اثر دارد و در هر تلاش اتصال
+  /// (اولی و همه fallbackها) پاس داده می‌شود. خالی = قابلیت خاموش.
+  /// (توسط IranGuard ست می‌شود.)
+  List<String> blockedApps = const <String>[];
+
+  /// لینک آخرین سروری که واقعاً وصل شد (برای وصل مجدد با همان سرور).
   String? lastConnectedLink;
 
   bool _coreVerified = false;
@@ -366,12 +373,14 @@ class VpnEngine {
     _connectStartedAt = DateTime.now();
     final completer = Completer<bool>();
     _connectCompleter = completer;
-    _trace('startV2Ray → $remark');
+    _trace('startV2Ray → $remark'
+        '${blockedApps.isEmpty ? "" : " (bypass ${blockedApps.length} اپ)"}');
     try {
       await _client!.startV2Ray(
         remark: remark,
         config: config,
         proxyOnly: false,
+        blockedApps: blockedApps.isEmpty ? null : List<String>.of(blockedApps),
         notificationDisconnectButtonName: 'قطع اتصال',
       );
     } on PlatformException catch (e) {
