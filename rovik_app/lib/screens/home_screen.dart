@@ -13,6 +13,7 @@ import '../services/sublink_parser.dart';
 import '../services/subscription_store.dart';
 import '../services/vpn_engine.dart';
 import '../theme.dart';
+import '../widgets/rovik_dialog.dart';
 import 'buy_screen.dart';
 import 'settings_screen.dart';
 import 'tutorial_screen.dart';
@@ -196,7 +197,12 @@ class _HomeScreenState extends State<HomeScreen>
       final body = await widget.api.fetchSublink(subUrl);
       final configs = SublinkParser.parseBody(body);
       if (configs.isEmpty) {
-        _snack('در این اشتراک کانفیگی پیدا نشد.');
+        _showRovikDialog(
+          title: 'کانفیگی پیدا نشد',
+          message:
+              'در این اشتراک کانفیگی پیدا نشد. اگر اشتراکت تازه‌ست، از ربات یک ساب‌لینک تازه بگیر و دوباره بزن.',
+          kind: RovikDialogKind.error,
+        );
         return;
       }
       await widget.store.saveSubUrl(subUrl);
@@ -212,11 +218,19 @@ class _HomeScreenState extends State<HomeScreen>
         _manualSelection = false;
         _activeOperator = null;
       });
-      _snack('${configs.length} کانفیگ وارد شد.');
+      _showRovikDialog(
+        title: 'اشتراک وارد شد',
+        message: '${FaFormat.number(configs.length)} کانفیگ وارد شد.',
+        kind: RovikDialogKind.success,
+      );
       await _refreshSubInfo();
       await _refreshPings(autoSelect: true, announce: true);
     } catch (e) {
-      _snack('ایمپورت ممکن نشد: $e');
+      _showRovikDialog(
+        title: 'ایمپورت ممکن نشد',
+        message: friendlyImportError(e),
+        kind: RovikDialogKind.error,
+      );
     } finally {
       if (mounted) setState(() => _importing = false);
     }
@@ -260,14 +274,22 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() => _vpnState = VpnConnectionState.disconnecting);
       try {
         await widget.engine.disconnect();
-      } catch (e) {
-        _snack('قطع اتصال ممکن نشد: $e');
+      } catch (_) {
+        _showRovikDialog(
+          title: 'قطع اتصال ممکن نشد',
+          message: 'قطع اتصال ممکن نشد. دوباره بزن.',
+          kind: RovikDialogKind.error,
+        );
       }
       _onEngineStatus(const VpnStatusSnapshot());
       return;
     }
     if (!VpnEngine.isSupported) {
-      _snack('اتصال VPN فقط روی گوشی اندرویدی ممکن است.');
+      _showRovikDialog(
+        title: 'فقط اندروید',
+        message: 'اتصال VPN فقط روی گوشی اندرویدی ممکن است.',
+        kind: RovikDialogKind.info,
+      );
       return;
     }
     setState(() => _vpnState = VpnConnectionState.connecting);
@@ -276,9 +298,14 @@ class _HomeScreenState extends State<HomeScreen>
       await widget.engine.connect(remark: cfg.name, link: cfg.link);
       _onEngineStatus(widget.engine.lastStatus);
       _snack('متصل شدی — ${cfg.name}');
-    } catch (e) {
+    } catch (_) {
       setState(() => _vpnState = VpnConnectionState.disconnected);
-      _snack('اتصال ممکن نشد: $e');
+      _showRovikDialog(
+        title: 'اتصال ممکن نشد',
+        message:
+            'اتصال ممکن نشد. اینترنتت رو چک کن و یک سرور دیگه رو امتحان کن.',
+        kind: RovikDialogKind.error,
+      );
     }
   }
 
@@ -375,13 +402,28 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _openSupport() async {
     final uri = Uri.parse(RovikConfig.supportUrl);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      _snack('باز کردن تلگرام ممکن نشد.');
+      _showRovikDialog(
+        title: 'باز نشد',
+        message: 'باز کردن تلگرام ممکن نشد.',
+        kind: RovikDialogKind.error,
+      );
     }
   }
 
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// دیالوگ وسط‌صفحه شیک روویک — برای خطاها و نتیجه ایمپورت.
+  /// پیام‌های کوچک (مثل «متصل شدی» یا «کپی شد») همچنان اسنک‌بار می‌مانند.
+  void _showRovikDialog({
+    required String title,
+    required String message,
+    required RovikDialogKind kind,
+  }) {
+    if (!mounted) return;
+    showRovikDialog(context, title: title, message: message, kind: kind);
   }
 
   @override
