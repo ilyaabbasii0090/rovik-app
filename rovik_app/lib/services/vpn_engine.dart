@@ -33,6 +33,13 @@ class VpnEngine {
   VpnConnectionState _state = VpnConnectionState.disconnected;
   VpnStatusSnapshot _last = const VpnStatusSnapshot();
 
+  /// زمان شروع آخرین درخواست اتصال. پلاگین در همان ثانیه‌های اول
+  /// ممکن است یک وضعیت گذرای DISCONNECTED بفرستد؛ تا وقتی اتصال
+  /// واقعاً برقرار نشده یا مهلت تمام نشده، آن را قطع‌شدن حساب نمی‌کنیم.
+  DateTime? _connectStartedAt;
+  Timer? _connectWatchdog;
+  static const Duration _connectGrace = Duration(seconds: 20);
+
   VpnConnectionState get state => _state;
   VpnStatusSnapshot get lastStatus => _last;
 
@@ -43,10 +50,21 @@ class VpnEngine {
     if (!isSupported || _initialized) return;
     _client = FlutterV2ray(
       onStatusChanged: (status) {
-        _last = VpnStatusSnapshot.fromV2Ray(status);
-        _state = _mapState(status.state);
-        _onStatus?.call(_last);
-        _statusListener?.call(_last);
+        final mapped = _mapState(status.state);
+        final snap = VpnStatusSnapshot.fromV2Ray(status);
+        if (mapped == VpnConnectionState.disconnected &&
+            _state == VpnConnectionState.connecting &&
+            _inConnectGrace) {
+          // وضعیت گذرای قطع در حین برقراری اتصال؛ نادیده گرفته می‌شود.
+          return;
+        }
+        if (mapped == VpnConnectionState.connected) {
+          _connectWatchdog?.cancel();
+          _connectStartedAt = null;
+        }
+        _last = snap;
+        _state = mapped;
+        _emit();
       },
     );
     await _client!.initializeV2Ray();
@@ -65,29 +83,47 @@ class VpnEngine {
       );
     }
     await initialize();
+    _connectStartedAt = DateTime.now();
     _state = VpnConnectionState.connecting;
     _emit();
     final parser = FlutterV2ray.parseFromURL(link);
     final config = parser.getFullConfiguration();
     final granted = await _client!.requestPermission();
     if (!granted) {
+      _connectStartedAt = null;
       _state = VpnConnectionState.disconnected;
       _emit();
       throw Exception('اجازه VPN داده نشد.');
     }
+    _connectStartedAt = DateTime.now();
     await _client!.startV2Ray(
       remark: remark,
       config: config,
       proxyOnly: false,
       notificationDisconnectButtonName: 'قطع اتصال',
     );
+    // اگر تا پایان مهلت وضعیت «متصل» نیامد، به حالت قطع برمی‌گردیم.
+    _connectWatchdog?.cancel();
+    _connectWatchdog = Timer(_connectGrace, () {
+      if (_state == VpnConnectionState.connecting) {
+        _connectStartedAt = null;
+        _state = VpnConnectionState.disconnected;
+        _emit();
+      }
+    });
   }
+
+  bool get _inConnectGrace =>
+      _connectStartedAt != null &&
+      DateTime.now().difference(_connectStartedAt!) < _connectGrace;
 
   Future<void> disconnect() async {
     if (!isSupported || _client == null) {
       _state = VpnConnectionState.disconnected;
       return;
     }
+    _connectWatchdog?.cancel();
+    _connectStartedAt = null;
     _state = VpnConnectionState.disconnecting;
     _emit();
     await _client!.stopV2Ray();
@@ -114,6 +150,10 @@ class VpnEngine {
   void _emit() {
     _onStatus?.call(_last);
     _statusListener?.call(_last);
+  }
+
+  void dispose() {
+    _connectWatchdog?.cancel();
   }
 
   static VpnConnectionState _mapState(String raw) {

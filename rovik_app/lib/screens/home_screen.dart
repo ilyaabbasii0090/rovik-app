@@ -92,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen>
     widget.importRequests.removeListener(_onImportRequest);
     _durationTimer?.cancel();
     _pulse.dispose();
+    widget.engine.dispose();
     super.dispose();
   }
 
@@ -242,10 +243,11 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _vpnStatus = snap;
       _vpnState = widget.engine.state;
-      if (snap.isConnected && _connectedSince == null) {
+      if (_vpnState == VpnConnectionState.connected &&
+          _connectedSince == null) {
         _connectedSince = DateTime.now();
         _startElapsedTimer();
-      } else if (!snap.isConnected) {
+      } else if (_vpnState == VpnConnectionState.disconnected) {
         _connectedSince = null;
         _durationTimer?.cancel();
         _elapsed = '۰۰:۰۰:۰۰';
@@ -297,8 +299,10 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       // اتصال مستقیم به کانفیگ انتخاب‌شده؛ بدون جست‌وجو و تست سرعت.
       await widget.engine.connect(remark: cfg.name, link: cfg.link);
-      _onEngineStatus(widget.engine.lastStatus);
-      _snack('متصل شدی — ${cfg.name}');
+      // وضعیت نهایی (متصل) را خود موتور از طریق onStatus اعلام می‌کند؛
+      // اینجا وضعیت قدیمی را دوباره نمی‌فرستیم تا اتصال تازه قطع‌شده
+      // دیده نشود.
+      if (mounted) setState(() => _vpnState = widget.engine.state);
     } catch (_) {
       setState(() => _vpnState = VpnConnectionState.disconnected);
       _showRovikDialog(
@@ -453,6 +457,24 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ),
+          Positioned(
+            bottom: -160,
+            left: -80,
+            right: -80,
+            child: IgnorePointer(
+              child: Container(
+                height: 340,
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    colors: [
+                      RovikTheme.neonCyan.withValues(alpha: 0.10),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
@@ -530,9 +552,9 @@ class _HomeScreenState extends State<HomeScreen>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: RovikTheme.neonBlue.withValues(alpha: 0.35),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
+                color: RovikTheme.neonCyan.withValues(alpha: 0.55),
+                blurRadius: 24,
+                spreadRadius: 1,
               ),
             ],
           ),
@@ -552,7 +574,7 @@ class _HomeScreenState extends State<HomeScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'روویک',
+                'Rovik',
                 style: TextStyle(
                   fontSize: 20,
                   height: 1.3,
@@ -585,10 +607,14 @@ class _HomeScreenState extends State<HomeScreen>
           onPressed: _goSettings,
         ),
         const SizedBox(width: 8),
-        _topIconButton(
-          icon: Icons.logout_rounded,
-          tooltip: 'خروج',
+        TextButton.icon(
           onPressed: _logout,
+          icon: const Icon(Icons.logout_rounded,
+              size: 20, color: RovikTheme.textMuted),
+          label: const Text(
+            'خروج',
+            style: TextStyle(fontSize: 13, color: RovikTheme.textMuted),
+          ),
         ),
       ],
     );
@@ -635,29 +661,10 @@ class _HomeScreenState extends State<HomeScreen>
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: _connected
-              ? const [Color(0xFF0E2F3B), RovikTheme.bgCard]
-              : const [RovikTheme.bgCardLight, RovikTheme.bgCard],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: _connected
-              ? RovikTheme.mint.withValues(alpha: 0.35)
-              : RovikTheme.hairline,
-        ),
-        boxShadow: _connected
-            ? [
-                BoxShadow(
-                  color: RovikTheme.mint.withValues(alpha: 0.14),
-                  blurRadius: 32,
-                  spreadRadius: 1,
-                ),
-              ]
-            : RovikTheme.softShadow(),
+      decoration: RovikTheme.neonCard(
+        color: RovikTheme.neonBlue,
+        glow: _connected ? 0.34 : 0.20,
+        border: _connected ? 0.85 : 0.55,
       ),
       child: Column(
         children: [
@@ -746,12 +753,11 @@ class _HomeScreenState extends State<HomeScreen>
                                   child: ElevatedButton(
                                     onPressed: _busy ? null : _toggleConnect,
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          RovikTheme.bgCardLight,
-                                      foregroundColor: RovikTheme.textMain,
+                                      backgroundColor: RovikTheme.neonBlue,
+                                      foregroundColor: Colors.white,
                                       side: BorderSide(
-                                        color: RovikTheme.coral
-                                            .withValues(alpha: 0.5),
+                                        color: RovikTheme.neonCyan
+                                            .withValues(alpha: 0.6),
                                       ),
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 24,
@@ -847,9 +853,11 @@ class _HomeScreenState extends State<HomeScreen>
                       border: Border.all(
                         color: _connected
                             ? RovikTheme.mint.withValues(
-                                alpha: 0.10 + 0.10 * (1 - t) - entry.$2 * 0.04,
+                                alpha: 0.22 + 0.25 * (1 - t) - entry.$2 * 0.08,
                               )
-                            : Colors.white.withValues(alpha: 0.05),
+                            : RovikTheme.neonBlue.withValues(
+                                alpha: 0.22 - entry.$2 * 0.08,
+                              ),
                       ),
                     ),
                   ),
@@ -861,21 +869,26 @@ class _HomeScreenState extends State<HomeScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      width: 2,
+                      color: _connected
+                          ? RovikTheme.mint
+                          : RovikTheme.neonCyan.withValues(alpha: 0.9),
+                      width: 3,
                     ),
-                    gradient: LinearGradient(
+                    gradient: const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: _connected
-                          ? const [RovikTheme.mint, Color(0xFF0E9F6E)]
-                          : const [Color(0xFF3D6BD6), Color(0xFF22408F)],
+                      colors: [Color(0xFF1F5BFF), Color(0xFF0A2A9E)],
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: accent.withValues(alpha: glow),
-                        blurRadius: 28,
-                        spreadRadius: 1,
+                        color: accent.withValues(alpha: glow + 0.25),
+                        blurRadius: 34,
+                        spreadRadius: 3,
+                      ),
+                      BoxShadow(
+                        color: RovikTheme.neonBlue.withValues(alpha: 0.35),
+                        blurRadius: 60,
+                        spreadRadius: 6,
                       ),
                     ],
                   ),
@@ -934,11 +947,14 @@ class _HomeScreenState extends State<HomeScreen>
         const SizedBox(height: 8),
         Text(
           FaFormat.speed(speed),
-          style: const TextStyle(
-            fontSize: 17,
+          style: TextStyle(
+            fontSize: 18,
             height: 1.3,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
             color: RovikTheme.textMain,
+            shadows: [
+              Shadow(color: color.withValues(alpha: 0.8), blurRadius: 12),
+            ],
           ),
         ),
         const SizedBox(height: 4),
@@ -953,7 +969,8 @@ class _HomeScreenState extends State<HomeScreen>
   /// کارت بسته: نام بسته و برچسب وضعیت، نوار پیشرفت و دو عدد بزرگ.
   Widget _packageCard() {
     final info = _subInfo;
-    return Card(
+    return Container(
+      decoration: RovikTheme.neonCard(glow: 0.14, border: 0.45, radius: 28),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -1090,6 +1107,12 @@ class _HomeScreenState extends State<HomeScreen>
               decoration: BoxDecoration(
                 gradient: LinearGradient(colors: colors),
                 borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.last.withValues(alpha: 0.7),
+                    blurRadius: 12,
+                  ),
+                ],
               ),
             ),
           ),
@@ -1105,10 +1128,11 @@ class _HomeScreenState extends State<HomeScreen>
           value,
           textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 24,
+            fontSize: 26,
             height: 1.3,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
             color: RovikTheme.textMain,
+            shadows: [Shadow(color: RovikTheme.neonBlue, blurRadius: 14)],
           ),
         ),
         const SizedBox(height: 4),
@@ -1430,10 +1454,12 @@ class _HomeScreenState extends State<HomeScreen>
       onTap: _selectBest,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: RovikTheme.bgCard,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: RovikTheme.hairline),
+        decoration: RovikTheme.neonCard(
+          color: RovikTheme.gold,
+          radius: 20,
+          glow: 0.10,
+          border: 0.35,
+          fill: const [Color(0xFF0C1A3C), Color(0xFF081330)],
         ),
         child: const Row(
           children: [
@@ -1553,24 +1579,19 @@ class _HomeScreenState extends State<HomeScreen>
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: selected ? RovikTheme.bgCardLight : RovikTheme.bgCard,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected
-                ? RovikTheme.neonBlue.withValues(alpha: 0.8)
-                : RovikTheme.hairline,
-            width: selected ? 1.5 : 1,
-          ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: RovikTheme.neonBlue.withValues(alpha: 0.18),
-                    blurRadius: 16,
-                  ),
-                ]
-              : null,
-        ),
+        decoration: selected
+            ? RovikTheme.neonCard(
+                radius: 20,
+                glow: 0.32,
+                border: 0.95,
+                fill: const [Color(0xFF0F2A66), Color(0xFF081634)],
+              )
+            : RovikTheme.neonCard(
+                radius: 20,
+                glow: 0.0,
+                border: 0.18,
+                fill: const [Color(0xFF0B1838), Color(0xFF071029)],
+              ),
         child: Row(
           children: [
             AnimatedSwitcher(
@@ -1665,9 +1686,9 @@ class _HomeScreenState extends State<HomeScreen>
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: RovikTheme.neonBlue.withValues(alpha: 0.30),
-                    blurRadius: 18,
-                    offset: const Offset(0, 6),
+                    color: RovikTheme.neonBlue.withValues(alpha: 0.65),
+                    blurRadius: 26,
+                    spreadRadius: 1,
                   ),
                 ],
               ),
@@ -1698,7 +1719,8 @@ class _HomeScreenState extends State<HomeScreen>
                   backgroundColor: RovikTheme.bgCard,
                   foregroundColor: RovikTheme.textMain,
                   side: BorderSide(
-                    color: RovikTheme.textMuted.withValues(alpha: 0.3),
+                    color: RovikTheme.neonBlue.withValues(alpha: 0.6),
+                    width: 1.4,
                   ),
                 ),
               ),

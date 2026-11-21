@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 /// تم اپ روویک: سرمه‌ای تیره، اکسنت آبی، کارت‌های گرد، حالت متصل سبز.
 /// هماهنگ با تم اپ فروشگاه (lib/theme.dart آن اپ) و چیدمان زونیکس.
 class RovikTheme {
-  static const Color bgDeep = Color(0xFF050B1E);
-  static const Color bgMid = Color(0xFF0A1735);
-  static const Color bgCard = Color(0xFF101F45);
-  static const Color bgCardLight = Color(0xFF16264F);
-  static const Color neonBlue = Color(0xFF2E7DFF);
-  static const Color neonCyan = Color(0xFF22D3EE);
+  static const Color bgDeep = Color(0xFF030816);
+  static const Color bgMid = Color(0xFF081634);
+  static const Color bgCard = Color(0xFF0B1838);
+  static const Color bgCardLight = Color(0xFF12275A);
+  static const Color neonBlue = Color(0xFF2F80FF);
+  static const Color neonCyan = Color(0xFF29E0FF);
   static const Color gold = Color(0xFFFFC94D);
   static const Color coral = Color(0xFFFF6B6B);
   static const Color mint = Color(0xFF34D399);
@@ -151,8 +151,41 @@ class RovikTheme {
   static const LinearGradient pageGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Color(0xFF0A1735), Color(0xFF050B1E), Color(0xFF071026)],
+    colors: [Color(0xFF081634), Color(0xFF030816), Color(0xFF050E26)],
   );
+
+  /// کارت نئونی: پس‌زمینه سرمه‌ای، حاشیه روشن و درخشش دو لایه.
+  static BoxDecoration neonCard({
+    Color color = neonBlue,
+    double radius = 28,
+    double glow = 0.28,
+    double border = 0.65,
+    List<Color>? fill,
+  }) =>
+      BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: fill ?? const [Color(0xFF0D2252), Color(0xFF071230)],
+        ),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(
+          color: color.withValues(alpha: border),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: glow),
+            blurRadius: 26,
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: color.withValues(alpha: glow * 0.5),
+            blurRadius: 60,
+            spreadRadius: 2,
+          ),
+        ],
+      );
 
   static List<BoxShadow> neonGlow([Color color = neonBlue]) => [
         BoxShadow(

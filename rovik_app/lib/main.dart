@@ -172,7 +172,7 @@ class _RovikAppState extends State<RovikApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'روویک',
+      title: 'Rovik',
       debugShowCheckedModeBanner: false,
       locale: const Locale('fa'),
       supportedLocales: const [Locale('fa'), Locale('en')],
