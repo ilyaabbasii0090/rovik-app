@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'iran_guard_screen.dart';
 import 'tutorial_screen.dart';
 
 /// تنظیمات اپ: آموزش، خروج از اشتراک.
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.onLogout});
+  const SettingsScreen({
+    super.key,
+    required this.onLogout,
+    this.onIranGuardChanged,
+  });
 
   final VoidCallback onLogout;
+
+  /// بعد از تغییر تنظیمات «اپ‌های ایرانی» صدا زده می‌شود.
+  final VoidCallback? onIranGuardChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +49,8 @@ class SettingsScreen extends StatelessWidget {
                   },
                 ),
               ),
+              const SizedBox(height: 12),
+              IranGuardCard(onChanged: onIranGuardChanged),
               const SizedBox(height: 12),
               Card(
                 child: ListTile(

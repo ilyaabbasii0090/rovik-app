@@ -11,6 +11,7 @@ import '../services/best_server.dart';
 import '../services/ping_service.dart';
 import '../services/sublink_parser.dart';
 import '../services/subscription_store.dart';
+import '../services/iran_guard.dart';
 import '../services/vpn_engine.dart';
 import '../theme.dart';
 import '../widgets/rovik_dialog.dart';
@@ -62,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen>
   // نام سروری که همین حالا دارد امتحان می‌شود (در حین اتصال چندسروره).
   String? _connectingTo;
   Timer? _durationTimer;
+  late final IranGuard _guard;
   String _elapsed = '۰۰:۰۰:۰۰';
   DateTime? _connectedSince;
 
@@ -85,6 +87,8 @@ class _HomeScreenState extends State<HomeScreen>
     )..repeat(reverse: true);
     widget.importRequests.addListener(_onImportRequest);
     widget.engine.onStatus = _onEngineStatus;
+    _guard = IranGuard(engine: widget.engine, candidates: _guardCandidates);
+    _guard.refresh();
     widget.engine.initialize().catchError((_) {
       // خطا در گزارش عیب‌یابی موتور ثبت شده؛ هنگام اتصال دوباره و
       // با دلیل کامل نشان داده می‌شود.
@@ -96,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     widget.importRequests.removeListener(_onImportRequest);
     _durationTimer?.cancel();
+    _guard.dispose();
     _pulse.dispose();
     widget.engine.dispose();
     super.dispose();
@@ -293,7 +298,8 @@ class _HomeScreenState extends State<HomeScreen>
           kind: RovikDialogKind.error,
         );
       }
-      _onEngineStatus(const VpnStatusSnapshot());
+      // مجموعِ آخرین اتصال پاک نمی‌شود؛ فقط سرعت صفر می‌شود.
+      _onEngineStatus(widget.engine.lastStatus);
       return;
     }
     if (!VpnEngine.isSupported) {
@@ -450,9 +456,24 @@ class _HomeScreenState extends State<HomeScreen>
       MaterialPageRoute(
         builder: (_) => SettingsScreen(
           onLogout: _logout,
+          onIranGuardChanged: () => _guard.refresh(),
         ),
       ),
     );
+  }
+
+  /// سرورهایی که وصل خودکار به‌ترتیب امتحان می‌کند (انتخاب‌شده اول،
+  /// بعد بقیه به‌ترتیب پینگ) — همان ترتیبِ دکمه اتصال.
+  List<({String remark, String link})> _guardCandidates() {
+    final cfg = _selectedConfig;
+    if (cfg == null) return const [];
+    final rest = BestServer.ranked(_configs)
+        .where((c) => c.link != cfg.link)
+        .toList();
+    return [
+      (remark: cfg.name, link: cfg.link),
+      for (final c in rest) (remark: c.name, link: c.link),
+    ];
   }
 
   void _goTutorial() {

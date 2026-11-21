@@ -1,9 +1,11 @@
 import 'dart:async';
-import 'dart:convert' show jsonDecode;
+import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart' show PlatformException;
+
+import 'native_bridge.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 /// وضعیت اتصال VPN در اپ.
@@ -48,6 +50,25 @@ class VpnEngine {
 
   /// کامل‌کننده‌ای که وقتی وضعیت «متصل» رسید، تلاش جاری را موفق اعلام می‌کند.
   Completer<bool>? _connectCompleter;
+
+  /// وقتی true باشد، دامنه‌های «.ir» در کانفیگ مستقیم (بدون VPN) می‌روند.
+  /// (توسط IranGuard ست می‌شود؛ فقط روی اتصال بعدی اثر دارد.)
+  bool bypassIranDomains = false;
+
+  /// لینک آخرین سروری که واقعاً وصل شد (برای وصل سریع بعد از قطع خودکار).
+  String? lastConnectedLink;
+
+  bool _coreVerified = false;
+  bool _permissionOk = false;
+
+  // --- آمار زنده ترافیک ---
+  Timer? _statsTimer;
+  DateTime? _lastConnectedEventAt;
+  int? _baseRx;
+  int? _baseTx;
+  int? _prevRx;
+  int? _prevTx;
+  DateTime? _prevAt;
 
   /// ثبت رویدادهای عیب‌یابی (آخرین ۱۲۰ خط) تا دلیل شکست روی گوشی دیده شود.
   final List<String> _log = <String>[];
@@ -96,7 +117,7 @@ class VpnEngine {
       _client = FlutterV2ray(
         onStatusChanged: (status) {
           final mapped = _mapState(status.state);
-          final snap = VpnStatusSnapshot.fromV2Ray(status);
+          var snap = VpnStatusSnapshot.fromV2Ray(status);
           final raw = status.state.toUpperCase();
           _eventsSinceStart++;
           if (raw == 'CONNECTING') _sawConnecting = true;
@@ -110,14 +131,29 @@ class VpnEngine {
             // وضعیت گذرای قطع در حین برقراری اتصال؛ نادیده گرفته می‌شود.
             return;
           }
+          final wasConnected = _state == VpnConnectionState.connected;
           if (mapped == VpnConnectionState.connected) {
+            _lastConnectedEventAt = DateTime.now();
             _connectStartedAt = null;
             final c = _connectCompleter;
             if (c != null && !c.isCompleted) c.complete(true);
             _connectCompleter = null;
+          } else {
+            // سرعت صفر می‌شود ولی مجموعِ آخرین اتصال پاک نمی‌شود.
+            snap = snap.copyWith(
+              downloadSpeed: 0,
+              uploadSpeed: 0,
+              downloadTotal: _last.downloadTotal,
+              uploadTotal: _last.uploadTotal,
+            );
           }
           _last = snap;
           _state = mapped;
+          if (mapped == VpnConnectionState.connected && !wasConnected) {
+            _startStats();
+          } else if (mapped != VpnConnectionState.connected) {
+            _stopStats();
+          }
           _emit();
         },
       );
@@ -135,9 +171,11 @@ class VpnEngine {
   /// بررسی اینکه هسته Xray واقعاً بارگذاری شده است. اگر کتابخانه
   /// نیتیو لود نشود (مثلاً R8 یا ABI نامناسب) اینجا خطای واضح می‌دهد.
   Future<void> _verifyCore() async {
+    if (_coreVerified) return;
     try {
       final v = await _client!.getCoreVersion();
       _trace('نسخه هسته: ${v.isEmpty ? "(خالی)" : v}');
+      _coreVerified = true;
     } catch (e) {
       _trace('getCoreVersion شکست خورد: $e');
       throw VpnStartException(
@@ -147,9 +185,13 @@ class VpnEngine {
   }
 
   Future<bool> _requestPermission() async {
+    // بعد از اولین مجوز موفق دیگر درخواست تکراری نمی‌دهیم تا وصل خودکار
+    // (از پس‌زمینه) سریع باشد و به پنجره مجوز نخورد.
+    if (_permissionOk) return true;
     try {
       final granted = await _client!.requestPermission();
       _trace('requestPermission → $granted');
+      if (granted) _permissionOk = true;
       return granted;
     } on PlatformException catch (e) {
       _trace('requestPermission خطا: ${e.code} ${e.message}');
@@ -319,6 +361,8 @@ class VpnEngine {
       return 'کانفیگ تولیدشده JSON معتبر نیست ($e)';
     }
 
+    if (bypassIranDomains) config = _withIranDirectRule(config);
+
     _connectStartedAt = DateTime.now();
     final completer = Completer<bool>();
     _connectCompleter = completer;
@@ -343,8 +387,10 @@ class VpnEngine {
     } finally {
       if (_connectCompleter == completer) _connectCompleter = null;
     }
-    if (ok) return null;
-    if (_state == VpnConnectionState.connected) return null;
+    if (ok || _state == VpnConnectionState.connected) {
+      lastConnectedLink = link;
+      return null;
+    }
 
     // --- شکست: دلیلش را پیدا کن ---
     final secs = timeout.inSeconds;
@@ -390,11 +436,16 @@ class VpnEngine {
     if (c != null && !c.isCompleted) c.complete(false);
     _connectCompleter = null;
     _connectStartedAt = null;
+    _stopStats();
     _state = VpnConnectionState.disconnecting;
     _emit();
     await _client!.stopV2Ray();
     _state = VpnConnectionState.disconnected;
-    _last = const VpnStatusSnapshot();
+    // سرعت صفر؛ مجموعِ آخرین اتصال همچنان دیده می‌شود.
+    _last = VpnStatusSnapshot(
+      downloadTotal: _last.downloadTotal,
+      uploadTotal: _last.uploadTotal,
+    );
     _emit();
   }
 
@@ -413,12 +464,119 @@ class VpnEngine {
     }
   }
 
+  // ---------------------------------------------------------------
+  // آمار زنده: پلاگین فقط موقع تغییر حالت رویداد می‌فرستد. تا وقتی
+  // وصل هستیم، هر ثانیه خودمان ترافیک واقعی را از آمار شبکه‌ی همین اپ
+  // (UID هسته‌ی VPN) می‌خوانیم و سرعت/مجموع را به‌روز می‌کنیم. اگر
+  // پلاگین خودش رویداد دوره‌ای بفرستد، همان استفاده می‌شود.
+  // ---------------------------------------------------------------
+  void _startStats() {
+    _statsTimer?.cancel();
+    _baseRx = _baseTx = _prevRx = _prevTx = null;
+    _prevAt = null;
+    _statsTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _statsTick(),
+    );
+    _statsTick();
+  }
+
+  void _stopStats() {
+    _statsTimer?.cancel();
+    _statsTimer = null;
+  }
+
+  bool _statsBusy = false;
+
+  Future<void> _statsTick() async {
+    if (_state != VpnConnectionState.connected) {
+      _stopStats();
+      return;
+    }
+    final pluginAt = _lastConnectedEventAt;
+    if (pluginAt != null &&
+        DateTime.now().difference(pluginAt) <
+            const Duration(milliseconds: 1500)) {
+      return; // پلاگین خودش دارد دوره‌ای آمار می‌دهد.
+    }
+    if (_statsBusy) return;
+    _statsBusy = true;
+    try {
+      final t = await NativeBridge.trafficBytes();
+      if (t == null || _state != VpnConnectionState.connected) return;
+      final now = DateTime.now();
+      if (_baseRx == null || _prevAt == null) {
+        _baseRx = t.rx;
+        _baseTx = t.tx;
+        _prevRx = t.rx;
+        _prevTx = t.tx;
+        _prevAt = now;
+        return;
+      }
+      final dt = now.difference(_prevAt!).inMilliseconds / 1000.0;
+      if (dt < 0.2) return;
+      final dRx = ((t.rx - _prevRx!) / dt).round();
+      final dTx = ((t.tx - _prevTx!) / dt).round();
+      _prevRx = t.rx;
+      _prevTx = t.tx;
+      _prevAt = now;
+      _last = VpnStatusSnapshot(
+        duration: _last.duration,
+        downloadSpeed: dRx < 0 ? 0 : dRx,
+        uploadSpeed: dTx < 0 ? 0 : dTx,
+        downloadTotal: (t.rx - _baseRx!).clamp(0, 1 << 62).toInt(),
+        uploadTotal: (t.tx - _baseTx!).clamp(0, 1 << 62).toInt(),
+        rawState: 'CONNECTED',
+      );
+      _emit();
+    } finally {
+      _statsBusy = false;
+    }
+  }
+
+  /// قانون مسیریابی: دامنه‌های «.ir» مستقیم بروند (فقط اگر کانفیگ
+  /// قابل‌خواندن باشد؛ در غیر این‌صورت کانفیگ اصلی دست‌نخورده می‌ماند).
+  String _withIranDirectRule(String config) {
+    try {
+      final j = Map<String, dynamic>.from(jsonDecode(config) as Map);
+      final outs = List<dynamic>.from(j['outbounds'] as List);
+      final hasDirect = outs.any((o) => o is Map && o['tag'] == 'direct');
+      if (!hasDirect) {
+        outs.add(<String, dynamic>{
+          'protocol': 'freedom',
+          'tag': 'direct',
+          'settings': <String, dynamic>{},
+        });
+      }
+      final routing = j['routing'] is Map
+          ? Map<String, dynamic>.from(j['routing'] as Map)
+          : <String, dynamic>{};
+      final rules = routing['rules'] is List
+          ? List<dynamic>.from(routing['rules'] as List)
+          : <dynamic>[];
+      rules.insert(0, <String, dynamic>{
+        'type': 'field',
+        'domain': <String>['domain:ir'],
+        'outboundTag': 'direct',
+      });
+      routing['rules'] = rules;
+      j['outbounds'] = outs;
+      j['routing'] = routing;
+      _trace('قانون دامنه‌های .ir (مستقیم) به کانفیگ اضافه شد');
+      return jsonEncode(j);
+    } catch (e) {
+      _trace('افزودن قانون .ir ممکن نشد؛ کانفیگ اصلی استفاده شد ($e)');
+      return config;
+    }
+  }
+
   void _emit() {
     _onStatus?.call(_last);
     _statusListener?.call(_last);
   }
 
   void dispose() {
+    _stopStats();
     final c = _connectCompleter;
     if (c != null && !c.isCompleted) c.complete(false);
     _connectCompleter = null;
@@ -502,6 +660,21 @@ class VpnStatusSnapshot {
         downloadTotal: s.download,
         uploadTotal: s.upload,
         rawState: s.state,
+      );
+
+  VpnStatusSnapshot copyWith({
+    int? downloadSpeed,
+    int? uploadSpeed,
+    int? downloadTotal,
+    int? uploadTotal,
+  }) =>
+      VpnStatusSnapshot(
+        duration: duration,
+        downloadSpeed: downloadSpeed ?? this.downloadSpeed,
+        uploadSpeed: uploadSpeed ?? this.uploadSpeed,
+        downloadTotal: downloadTotal ?? this.downloadTotal,
+        uploadTotal: uploadTotal ?? this.uploadTotal,
+        rawState: rawState,
       );
 
   /// مدت اتصال «HH:MM:SS».
