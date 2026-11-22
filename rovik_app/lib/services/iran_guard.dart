@@ -1,74 +1,62 @@
 import 'dart:async';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/widgets.dart';
 
 import 'native_bridge.dart';
 import 'vpn_engine.dart';
 
-/// تنظیمات «اپ‌های ایرانی» (bypass تک‌اپ: ترافیک این اپ‌ها مستقیم می‌رود).
+/// تشخیص خودکار اپ‌های ایرانی (بدون هیچ انتخاب دستی از طرف کاربر).
 class IranGuardPrefs {
-  static const _kAdded = 'rovik_iran_guard_added_v1';
-  static const _kRemoved = 'rovik_iran_guard_removed_v1';
-
-  /// اپ‌های ایرانی رایج (بانکی، دولتی و پرکاربرد). علاوه بر این فهرست،
-  /// اپ‌هایی که نامشان «بانک» دارد هم پیش‌فرض حساب می‌شوند.
+  /// اپ‌های پرکاربرد ایرانی که پکیجشان با «ir.» شروع نمی‌شود (فقط
+  /// پکیج‌های مطمئن). هر پکیجی که با «ir.» شروع شود هم خودکار ایرانی
+  /// حساب می‌شود و نیازی به ثبت اینجا ندارد.
   static const Set<String> knownPackages = {
+    // بانک و مالی
     'com.samanpr.blu',
-    'ir.mobillet.app',
-    'ir.tejaratbank.tata.mobile.android.tejarat',
-    'ir.mci.ecareapp',
-    'ir.medu.shad',
+    // تاکسی اینترنتی و سفارش غذا
+    'cab.snapp.passenger',
+    'cab.snapp.driver',
+    'cab.snapp.snappfood',
+    // فروشگاه
+    'com.digikala',
+    // بازار اپ
     'com.farsitel.bazaar',
-    'ir.mservices.market',
   };
 
-  /// آیا این اپ به‌طور پیش‌فرض ایرانیِ نیازمند آی‌پی ایران حساب می‌شود؟
-  static bool isDefault(InstalledApp a) {
-    if (knownPackages.contains(a.package)) return true;
+  /// آیا این اپ ایرانیِ نیازمند آی‌پی ایران حساب می‌شود؟
+  /// - پکیج با «ir.» شروع شود، یا در [knownPackages] باشد؛
+  /// - نام نمایشی «بانک» داشته باشد یا پکیج «bank» داشته باشد.
+  static bool isIranian(InstalledApp a) {
+    final pkg = a.package.toLowerCase();
+    if (pkg.startsWith('ir.')) return true;
+    if (knownPackages.contains(pkg)) return true;
     if (a.label.contains('بانک')) return true;
-    return a.package.startsWith('ir.') && a.package.contains('bank');
+    return pkg.contains('bank');
   }
 
-  static Future<Set<String>> loadAdded() async {
-    final p = await SharedPreferences.getInstance();
-    return (p.getStringList(_kAdded) ?? const <String>[]).toSet();
-  }
-
-  static Future<Set<String>> loadRemoved() async {
-    final p = await SharedPreferences.getInstance();
-    return (p.getStringList(_kRemoved) ?? const <String>[]).toSet();
-  }
-
-  static Future<void> saveLists(Set<String> added, Set<String> removed) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setStringList(_kAdded, added.toList());
-    await p.setStringList(_kRemoved, removed.toList());
-  }
-
-  /// مجموعه نهایی پکیج‌هایی که ترافیکشان مستقیم (بدون VPN) می‌رود.
-  static Future<Set<String>> effective(List<InstalledApp> installed) async {
-    final added = await loadAdded();
-    final removed = await loadRemoved();
-    final defaults = <String>{
-      ...knownPackages,
-      for (final a in installed)
-        if (isDefault(a)) a.package,
-    };
-    return (defaults.difference(removed)).union(added);
-  }
+  /// پکیج‌های اپ‌های ایرانیِ نصب‌شده روی گوشی؛ ترافیک این‌ها مستقیم
+  /// (بدون VPN) می‌رود.
+  static Set<String> effective(List<InstalledApp> installed) => {
+        for (final a in installed)
+          if (isIranian(a)) a.package,
+      };
 }
 
 /// اعمال فهرست اپ‌های ایرانی روی موتور VPN (bypass تک‌اپ، بدون هیچ مجوز).
 ///
-/// - قابلیت همیشه برای همه فعال است؛ کلید روشن/خاموش ندارد.
+/// - قابلیت همیشه برای همه فعال است؛ نه کلید دارد نه انتخاب دستی.
+///   فهرست در هر اتصال خودکار از اپ‌های نصب‌شده ساخته می‌شود.
 /// - VPN همیشه روشن می‌ماند؛ ترافیک اپ‌های فهرست مستقیم (آی‌پی ایران) می‌رود
 ///   و بقیه ترافیک روی VPN می‌ماند.
 /// - فهرست فقط موقع استارت VPN اثر دارد؛ پس اگر موقع وصل بودن فهرست عوض شد،
 ///   یک بار اتصال تمیز قطع و با همان مسیر [VpnEngine.connectWithFallback]
 ///   (سروری که وصل بود اول) دوباره وصل می‌شود.
-class IranGuard {
+class IranGuard with WidgetsBindingObserver {
   IranGuard({required this.engine, required this.candidates}) {
     engine.blockedAppsProvider = _resolve;
+    WidgetsBinding.instance.addObserver(this);
+    // نصب یا حذف اپ ایرانی در حین کار اپ را هم بگیر.
+    _poll = Timer.periodic(const Duration(seconds: 30), (_) => refresh());
   }
 
   final VpnEngine engine;
@@ -78,6 +66,7 @@ class IranGuard {
   String _appliedSignature = '';
   String _wantedSignature = '';
   Timer? _debounce;
+  Timer? _poll;
   bool _reconnecting = false;
   bool _disposed = false;
 
@@ -85,8 +74,7 @@ class IranGuard {
 
   Future<List<String>> _resolve() async {
     final installed = await NativeBridge.installedApps();
-    final apps = await IranGuardPrefs.effective(installed);
-    return apps.toList()..sort();
+    return IranGuardPrefs.effective(installed).toList()..sort();
   }
 
   List<({String remark, String link})> _ordered() {
@@ -98,7 +86,7 @@ class IranGuard {
     return [list[idx], ...list.where((c) => c.link != first)];
   }
 
-  /// فهرست را دوباره می‌خواند و روی موتور اعمال می‌کند. اگر VPN وصل است و
+  /// فهرست را از اپ‌های نصب‌شده دوباره می‌سازد و روی موتور اعمال می‌کند. اگر VPN وصل است و
   /// فهرست عوض شده، با کمی تأخیر (برای جمع شدن چند تیک پشت‌سرهم) اتصال را
   /// تمیز قطع و دوباره وصل می‌کند.
   Future<void> refresh() async {
@@ -141,8 +129,17 @@ class IranGuard {
     }
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // برگشت به اپ (مثلاً بعد از نصب یک اپ ایرانی): فهرست را دوباره بساز.
+    if (state == AppLifecycleState.resumed) refresh();
+  }
+
   void dispose() {
     _disposed = true;
+    _poll?.cancel();
+    _poll = null;
+    WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
     _debounce = null;
     if (engine.blockedAppsProvider == _resolve) engine.blockedAppsProvider = null;

@@ -456,7 +456,6 @@ class _HomeScreenState extends State<HomeScreen>
       MaterialPageRoute(
         builder: (_) => SettingsScreen(
           onLogout: _logout,
-          onIranGuardChanged: () => _guard.refresh(),
         ),
       ),
     );
