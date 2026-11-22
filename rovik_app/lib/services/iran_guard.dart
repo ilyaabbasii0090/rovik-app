@@ -7,7 +7,6 @@ import 'vpn_engine.dart';
 
 /// تنظیمات «اپ‌های ایرانی» (bypass تک‌اپ: ترافیک این اپ‌ها مستقیم می‌رود).
 class IranGuardPrefs {
-  static const _kEnabled = 'rovik_iran_guard_enabled_v1';
   static const _kAdded = 'rovik_iran_guard_added_v1';
   static const _kRemoved = 'rovik_iran_guard_removed_v1';
 
@@ -28,16 +27,6 @@ class IranGuardPrefs {
     if (knownPackages.contains(a.package)) return true;
     if (a.label.contains('بانک')) return true;
     return a.package.startsWith('ir.') && a.package.contains('bank');
-  }
-
-  static Future<bool> loadEnabled() async {
-    final p = await SharedPreferences.getInstance();
-    return p.getBool(_kEnabled) ?? false;
-  }
-
-  static Future<void> saveEnabled(bool v) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(_kEnabled, v);
   }
 
   static Future<Set<String>> loadAdded() async {
@@ -71,14 +60,16 @@ class IranGuardPrefs {
 
 /// اعمال فهرست اپ‌های ایرانی روی موتور VPN (bypass تک‌اپ، بدون هیچ مجوز).
 ///
+/// - قابلیت همیشه برای همه فعال است؛ کلید روشن/خاموش ندارد.
 /// - VPN همیشه روشن می‌ماند؛ ترافیک اپ‌های فهرست مستقیم (آی‌پی ایران) می‌رود
 ///   و بقیه ترافیک روی VPN می‌ماند.
-/// - فهرست فقط موقع استارت VPN اثر دارد؛ پس اگر موقع وصل بودن کلید یا فهرست
-///   عوض شد، یک بار اتصال تمیز قطع و با همان مسیر
-///   [VpnEngine.connectWithFallback] (سروری که وصل بود اول) دوباره وصل می‌شود.
-/// - اگر قابلیت خاموش است، فهرست خالی می‌ماند و VPN مثل قبل کار می‌کند.
+/// - فهرست فقط موقع استارت VPN اثر دارد؛ پس اگر موقع وصل بودن فهرست عوض شد،
+///   یک بار اتصال تمیز قطع و با همان مسیر [VpnEngine.connectWithFallback]
+///   (سروری که وصل بود اول) دوباره وصل می‌شود.
 class IranGuard {
-  IranGuard({required this.engine, required this.candidates});
+  IranGuard({required this.engine, required this.candidates}) {
+    engine.blockedAppsProvider = _resolve;
+  }
 
   final VpnEngine engine;
   final List<({String remark, String link})> Function() candidates;
@@ -90,10 +81,12 @@ class IranGuard {
   bool _reconnecting = false;
   bool _disposed = false;
 
-  static String _signature(bool enabled, Set<String> apps) {
-    if (!enabled) return '';
-    final l = apps.toList()..sort();
-    return l.join(',');
+  static String _signature(List<String> apps) => apps.join(',');
+
+  Future<List<String>> _resolve() async {
+    final installed = await NativeBridge.installedApps();
+    final apps = await IranGuardPrefs.effective(installed);
+    return apps.toList()..sort();
   }
 
   List<({String remark, String link})> _ordered() {
@@ -105,21 +98,15 @@ class IranGuard {
     return [list[idx], ...list.where((c) => c.link != first)];
   }
 
-  /// تنظیمات را دوباره می‌خواند و روی موتور اعمال می‌کند. اگر VPN وصل است و
-  /// تنظیمات عوض شده، با کمی تأخیر (برای جمع شدن چند تیک پشت‌سرهم) اتصال را
+  /// فهرست را دوباره می‌خواند و روی موتور اعمال می‌کند. اگر VPN وصل است و
+  /// فهرست عوض شده، با کمی تأخیر (برای جمع شدن چند تیک پشت‌سرهم) اتصال را
   /// تمیز قطع و دوباره وصل می‌کند.
   Future<void> refresh() async {
     if (!VpnEngine.isSupported) return;
-    final enabled = await IranGuardPrefs.loadEnabled();
-    var apps = <String>{};
-    if (enabled) {
-      final installed = await NativeBridge.installedApps();
-      apps = await IranGuardPrefs.effective(installed);
-    }
+    final apps = await _resolve();
     if (_disposed) return;
-    engine.bypassIranDomains = enabled;
-    engine.blockedApps = enabled ? (apps.toList()..sort()) : const <String>[];
-    _wantedSignature = _signature(enabled, apps);
+    engine.blockedApps = apps;
+    _wantedSignature = _signature(apps);
 
     if (engine.state != VpnConnectionState.connected) {
       // وصل نیست: فهرست جدید روی اتصال بعدی اثر می‌کند.
@@ -154,13 +141,10 @@ class IranGuard {
     }
   }
 
-  /// موتور هر بار که استارت می‌شود فهرست فعلی را استفاده می‌کند؛ این متد
-  /// را بعد از اتصال دستیِ کاربر صدا بزن تا امضای اعمال‌شده هم‌گام شود.
-  void markApplied() => _appliedSignature = _wantedSignature;
-
   void dispose() {
     _disposed = true;
     _debounce?.cancel();
     _debounce = null;
+    if (engine.blockedAppsProvider == _resolve) engine.blockedAppsProvider = null;
   }
 }

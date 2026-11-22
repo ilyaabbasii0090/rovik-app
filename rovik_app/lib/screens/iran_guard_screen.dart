@@ -8,7 +8,7 @@ import '../theme.dart';
 class IranGuardCard extends StatefulWidget {
   const IranGuardCard({super.key, this.onChanged});
 
-  /// بعد از هر تغییر (روشن/خاموش یا تغییر فهرست) صدا زده می‌شود.
+  /// بعد از هر تغییر فهرست اپ‌ها صدا زده می‌شود.
   final VoidCallback? onChanged;
 
   @override
@@ -16,30 +16,6 @@ class IranGuardCard extends StatefulWidget {
 }
 
 class _IranGuardCardState extends State<IranGuardCard> {
-  bool _enabled = false;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final enabled = await IranGuardPrefs.loadEnabled();
-    if (!mounted) return;
-    setState(() {
-      _enabled = enabled;
-      _loaded = true;
-    });
-  }
-
-  Future<void> _toggle(bool v) async {
-    await IranGuardPrefs.saveEnabled(v);
-    setState(() => _enabled = v);
-    widget.onChanged?.call();
-  }
-
   Future<void> _openApps() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -55,24 +31,22 @@ class _IranGuardCardState extends State<IranGuardCard> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
           children: [
-            SwitchListTile(
-              secondary: const Icon(
+            const ListTile(
+              leading: Icon(
                 Icons.swap_horiz_rounded,
                 color: RovikTheme.mint,
               ),
-              title: const Text('اپ‌های ایرانی بدون قطع VPN'),
-              subtitle: const Text(
-                'VPN همیشه روشن می‌ماند و اپ‌هایی مثل همراه بانک خودکار با آی‌پی ایران کار می‌کنند؛ بقیه ترافیک روی VPN می‌ماند. سایت‌های «.ir» هم مستقیم باز می‌شوند.',
+              title: Text('اپ‌های ایرانی'),
+              subtitle: Text(
+                'VPN همیشه روشن می‌ماند و اپ‌های ایرانی خودکار با آی‌پی ایران کار می‌کنند.',
               ),
-              value: _enabled,
-              onChanged: _loaded ? _toggle : null,
             ),
             ListTile(
               leading: const Icon(
                 Icons.apps_rounded,
                 color: RovikTheme.mint,
               ),
-              title: const Text('انتخاب اپ‌های ایرانی'),
+              title: const Text('انتخاب اپ‌ها'),
               subtitle: const Text('اضافه یا حذف اپ از فهرست'),
               trailing: const Icon(Icons.chevron_left),
               onTap: _openApps,

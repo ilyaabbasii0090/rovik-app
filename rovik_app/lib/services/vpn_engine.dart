@@ -51,16 +51,27 @@ class VpnEngine {
   /// کامل‌کننده‌ای که وقتی وضعیت «متصل» رسید، تلاش جاری را موفق اعلام می‌کند.
   Completer<bool>? _connectCompleter;
 
-  /// وقتی true باشد، دامنه‌های «.ir» در کانفیگ مستقیم (بدون VPN) می‌روند.
-  /// (توسط IranGuard ست می‌شود؛ فقط روی اتصال بعدی اثر دارد.)
-  bool bypassIranDomains = false;
-
   /// پکیج اپ‌هایی که ترافیکشان مستقیم (بدون VPN، با آی‌پی ایران) می‌رود.
   /// به‌صورت `blockedApps` به startV2Ray پلاگین داده می‌شود (bypass تک‌اپ
   /// بدون هیچ مجوزی). فقط موقع استارت VPN اثر دارد و در هر تلاش اتصال
   /// (اولی و همه fallbackها) پاس داده می‌شود. خالی = قابلیت خاموش.
   /// (توسط IranGuard ست می‌شود.)
   List<String> blockedApps = const <String>[];
+
+  /// فهرست نهایی اپ‌های ایرانی را از تنظیمات می‌خواند؛ قبل از هر اتصال صدا
+  /// زده می‌شود تا حتی اگر اتصال زودتر از اولین [IranGuard.refresh] شروع شد،
+  /// فهرست درست پاس داده شود. (توسط IranGuard ست می‌شود.)
+  Future<List<String>> Function()? blockedAppsProvider;
+
+  Future<void> _loadBlockedApps() async {
+    final p = blockedAppsProvider;
+    if (p == null) return;
+    try {
+      blockedApps = await p();
+    } catch (e) {
+      _trace('خواندن فهرست اپ‌های ایرانی ممکن نشد: $e');
+    }
+  }
 
   /// لینک آخرین سروری که واقعاً وصل شد (برای وصل مجدد با همان سرور).
   String? lastConnectedLink;
@@ -230,6 +241,7 @@ class VpnEngine {
       _emit();
       throw const VpnPermissionDenied();
     }
+    await _loadBlockedApps();
     final reason = await _tryConnectOne(
       remark: remark,
       link: link,
@@ -278,6 +290,7 @@ class VpnEngine {
       _emit();
       throw const VpnPermissionDenied();
     }
+    await _loadBlockedApps();
     var tried = 0;
     final failures = <String>[];
     for (var i = 0; i < candidates.length; i++) {
@@ -368,7 +381,7 @@ class VpnEngine {
       return 'کانفیگ تولیدشده JSON معتبر نیست ($e)';
     }
 
-    if (bypassIranDomains) config = _withIranDirectRule(config);
+    config = _withIranDirectRule(config);
 
     _connectStartedAt = DateTime.now();
     final completer = Completer<bool>();
