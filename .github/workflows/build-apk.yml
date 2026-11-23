@@ -68,3 +68,4 @@ jobs:
           name: rovik-release-apk
           path: rovik_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
+
