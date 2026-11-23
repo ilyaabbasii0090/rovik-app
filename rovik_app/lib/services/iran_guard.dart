@@ -40,6 +40,12 @@ class IranGuardPrefs {
         for (final a in installed)
           if (isIranian(a)) a.package,
       };
+
+  /// فهرست مرتب نهایی برای blockedApps (در هر اتصال، از اپ‌های نصب‌شده).
+  static Future<List<String>> resolveBlocked() async {
+    final installed = await NativeBridge.installedApps();
+    return effective(installed).toList()..sort();
+  }
 }
 
 /// اعمال فهرست اپ‌های ایرانی روی موتور VPN (bypass تک‌اپ، بدون هیچ مجوز).
@@ -73,8 +79,7 @@ class IranGuard with WidgetsBindingObserver {
   static String _signature(List<String> apps) => apps.join(',');
 
   Future<List<String>> _resolve() async {
-    final installed = await NativeBridge.installedApps();
-    return IranGuardPrefs.effective(installed).toList()..sort();
+    return IranGuardPrefs.resolveBlocked();
   }
 
   List<({String remark, String link})> _ordered() {

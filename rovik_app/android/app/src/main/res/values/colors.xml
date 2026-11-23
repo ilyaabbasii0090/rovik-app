@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- پس‌زمینه تیره برندشده؛ هم‌رنگ با لوگو و اسپلش داخل اپ (دیگر فلش سفید نیست) -->
+    <color name="rovik_bg">#020823</color>
+</resources>

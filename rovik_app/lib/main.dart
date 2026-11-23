@@ -7,8 +7,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'config.dart';
 import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/app_api.dart';
 import 'services/subscription_store.dart';
+import 'services/tile_runner.dart';
 import 'services/version_check.dart';
 import 'services/vpn_engine.dart';
 import 'theme.dart';
@@ -16,6 +18,11 @@ import 'theme.dart';
 void main() {
   runApp(const RovikApp());
 }
+
+/// نقطه ورود موتور هدلس کاشی تنظیمات سریع (بدون UI)؛ از
+/// RovikTileService → HeadlessVpn صدا زده می‌شود.
+@pragma('vm:entry-point')
+Future<void> tileMain() => runTileCommand();
 
 /// اپ اختصاصی VPN روویک.
 ///
@@ -33,6 +40,7 @@ class RovikApp extends StatefulWidget {
 
 class _RovikAppState extends State<RovikApp> {
   final _importRequests = ValueNotifier<String?>(null);
+  final _homeReady = ValueNotifier<bool>(false);
   final _api = RovikApi();
   final _store = SubscriptionStore();
   late final VpnEngine _engine;
@@ -52,6 +60,7 @@ class _RovikAppState extends State<RovikApp> {
     _linkSub?.cancel();
     _api.close();
     _importRequests.dispose();
+    _homeReady.dispose();
     super.dispose();
   }
 
@@ -172,7 +181,7 @@ class _RovikAppState extends State<RovikApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Rovik',
+      title: 'RovikVpn',
       debugShowCheckedModeBanner: false,
       locale: const Locale('fa'),
       supportedLocales: const [Locale('fa'), Locale('en')],
@@ -182,11 +191,17 @@ class _RovikAppState extends State<RovikApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: RovikTheme.dark(),
-      home: HomeScreen(
-        importRequests: _importRequests,
-        api: _api,
-        store: _store,
-        engine: _engine,
+      // اسپلش انیمیشنی فقط ظاهری است؛ صفحه اصلی (و دیپ‌لینک و چک آپدیت)
+      // از همان لحظه اول زیر آن کار می‌کنند.
+      home: SplashGate(
+        ready: _homeReady,
+        child: HomeScreen(
+          importRequests: _importRequests,
+          api: _api,
+          store: _store,
+          engine: _engine,
+          onReady: () => _homeReady.value = true,
+        ),
       ),
     );
   }

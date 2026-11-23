@@ -6,7 +6,7 @@ void main() {
       (WidgetTester tester) async {
     await tester.pumpWidget(const RovikApp());
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Rovik'), findsWidgets);
+    expect(find.text('RovikVpn'), findsWidgets);
     expect(find.text('سرورها (۰)'), findsOneWidget);
     expect(find.text('هنوز سروری نداری'), findsOneWidget);
     expect(find.text('پشتیبانی'), findsOneWidget);

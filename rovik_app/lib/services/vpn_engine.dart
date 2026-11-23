@@ -202,6 +202,10 @@ class VpnEngine {
     }
   }
 
+  /// برای اجرای هدلس (کاشی تنظیمات سریع): مجوز VPN قبلاً در نیتیو تأیید شده
+  /// (VpnService.prepare == null) و بدون اکتیویتی نمی‌شود دوباره درخواست داد.
+  void assumePermissionGranted() => _permissionOk = true;
+
   Future<bool> _requestPermission() async {
     // بعد از اولین مجوز موفق دیگر درخواست تکراری نمی‌دهیم تا وصل خودکار
     // (از پس‌زمینه) سریع باشد و به پنجره مجوز نخورد.
@@ -493,6 +497,7 @@ class VpnEngine {
   // پلاگین خودش رویداد دوره‌ای بفرستد، همان استفاده می‌شود.
   // ---------------------------------------------------------------
   void _startStats() {
+    NativeBridge.setSpeedNotifier(true); // سرعت زنده داخل اعلان VPN
     _statsTimer?.cancel();
     _baseRx = _baseTx = _prevRx = _prevTx = null;
     _prevAt = null;
@@ -504,6 +509,7 @@ class VpnEngine {
   }
 
   void _stopStats() {
+    if (_statsTimer != null) NativeBridge.setSpeedNotifier(false);
     _statsTimer?.cancel();
     _statsTimer = null;
   }

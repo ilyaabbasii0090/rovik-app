@@ -10,8 +10,8 @@ class InstalledApp {
   final String label;
 }
 
-/// پل نیتیو اندروید (MainActivity.kt): آمار ترافیک و فهرست اپ‌های نصب‌شده
-/// (هیچ‌کدام مجوز خاصی نمی‌خواهند).
+/// پل نیتیو اندروید (NativeChannel.kt): آمار ترافیک، فهرست اپ‌های نصب‌شده،
+/// شبکه فعلی و سرعت زنده‌ی اعلان (هیچ‌کدام مجوز خطرناکی نمی‌خواهند).
 class NativeBridge {
   static const MethodChannel _ch = MethodChannel('com.rovikvpn.app/native');
 
@@ -47,6 +47,29 @@ class NativeBridge {
       ];
     } catch (_) {
       return const <InstalledApp>[];
+    }
+  }
+
+  /// شبکه فیزیکی فعلی: transport = wifi | mobile | none، و در صورت
+  /// دسترسی ssid (وای‌فای) یا operator (نام اپراتور). null یعنی در دسترس نیست.
+  static Future<Map<String, String>?> networkInfo() async {
+    if (!_ok) return null;
+    try {
+      final r = await _ch.invokeMethod<Map<dynamic, dynamic>>('networkInfo');
+      if (r == null) return null;
+      return {for (final e in r.entries) '${e.key}': '${e.value}'};
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// روشن/خاموش کردن به‌روزرسانی سرعت زنده داخل اعلان دائمی VPN.
+  static Future<void> setSpeedNotifier(bool enabled) async {
+    if (!_ok) return;
+    try {
+      await _ch.invokeMethod<void>('speedNotifier', {'enabled': enabled});
+    } catch (_) {
+      // اعلان سرعت اختیاری است؛ شکستش نباید اتصال را بهم بزند.
     }
   }
 }

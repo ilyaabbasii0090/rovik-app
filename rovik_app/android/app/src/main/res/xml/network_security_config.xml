@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- فقط برای API جایگزین آی‌پی (ip-api.com فقط HTTP دارد)؛ بقیه ترافیک اپ همچنان فقط HTTPS است. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">ip-api.com</domain>
+    </domain-config>
+</network-security-config>

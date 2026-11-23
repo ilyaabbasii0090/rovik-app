@@ -8,9 +8,12 @@ import '../config.dart';
 import '../models/models.dart';
 import '../services/app_api.dart';
 import '../services/best_server.dart';
+import '../services/ip_info.dart';
+import '../services/network_memory.dart';
 import '../services/ping_service.dart';
 import '../services/sublink_parser.dart';
 import '../services/subscription_store.dart';
+import '../services/usage_alerts.dart';
 import '../services/iran_guard.dart';
 import '../services/vpn_engine.dart';
 import '../theme.dart';
@@ -31,7 +34,12 @@ class HomeScreen extends StatefulWidget {
     required this.api,
     required this.store,
     required this.engine,
+    this.onReady,
   });
+
+  /// وقتی آماده‌سازی اولیه (خواندن اشتراک ذخیره‌شده) تمام شد صدا زده
+  /// می‌شود؛ اسپلش با آن می‌فهمد می‌تواند کنار برود.
+  final VoidCallback? onReady;
 
   /// هر بار یک آدرس ساب‌لینک جدید در آن گذاشته شود، ایمپورت می‌شود.
   final ValueNotifier<String?> importRequests;
@@ -58,6 +66,11 @@ class _HomeScreenState extends State<HomeScreen>
   String? _activeOperator;
   bool _operatorTesting = false;
   String? _subUrl;
+  // آی‌پی/کشور خروجی بعد از اتصال (null = نامشخص یا قطع).
+  IpInfo? _ipInfo;
+  int _ipToken = 0;
+  // هشدارهای فعلی حجم/روز برای بنر داخل صفحه.
+  List<UsageAlert> _alerts = const [];
   VpnStatusSnapshot _vpnStatus = const VpnStatusSnapshot();
   VpnConnectionState _vpnState = VpnConnectionState.disconnected;
   // نام سروری که همین حالا دارد امتحان می‌شود (در حین اتصال چندسروره).
@@ -99,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     widget.importRequests.removeListener(_onImportRequest);
+    _ipToken++;
     _durationTimer?.cancel();
     _guard.dispose();
     _pulse.dispose();
@@ -131,10 +145,13 @@ class _HomeScreenState extends State<HomeScreen>
       });
     } catch (_) {
       // ذخیره‌سازی محلی در دسترس نیست؛ اپ با حالت خالی ادامه می‌دهد.
+      widget.onReady?.call();
       if (!mounted) return;
       setState(() => _loadingSub = false);
       return;
     }
+    // خواندن محلی تمام شد؛ اسپلش می‌تواند کنار برود (شبکه منتظر نمی‌ماند).
+    widget.onReady?.call();
     await _refreshSubInfo();
     // بعد از لود، همه سرورها با پینگ واقعی تست می‌شوند و اگر کاربر
     // قبلاً دستی سروری را انتخاب نکرده باشد، سریع‌ترین سرور
@@ -160,6 +177,39 @@ class _HomeScreenState extends State<HomeScreen>
     if (info != null && info.username.isNotEmpty) {
       await widget.store.saveUsername(info.username);
     }
+    unawaited(_processAlerts(info));
+  }
+
+  /// هشدار کم شدن حجم/روز: بنر داخل صفحه + اعلان لوکال (حداکثر یک اعلان
+  /// در روز برای هر هشدار). مجوز اعلان همین‌جا و با توضیح فارسی خواسته
+  /// می‌شود، نه موقع شروع اپ، و فقط یک بار.
+  Future<void> _processAlerts(SubInfo? info) async {
+    final alerts = info == null ? <UsageAlert>[] : UsageAlerts.evaluate(info);
+    if (mounted) setState(() => _alerts = alerts);
+    if (alerts.isEmpty || !VpnEngine.isSupported) return;
+    final due = <UsageAlert>[];
+    for (final a in alerts) {
+      if (await AlertNotifier.canSendToday(a.id)) due.add(a);
+    }
+    if (due.isEmpty) return;
+    if (!await AlertNotifier.areEnabled()) {
+      if (await AlertNotifier.alreadyAsked()) return;
+      if (!mounted) return;
+      await AlertNotifier.markAsked();
+      if (!mounted) return;
+      await showRovikDialog(
+        context,
+        title: 'اجازه نمایش اعلان',
+        message:
+            'برای اینکه وقتی حجم یا روزهای اشتراکت رو به اتمام بود به‌موقع خبرت کنیم، اجازه نمایش اعلان لازم است. در پنجره بعدی «اجازه» را بزن.',
+        kind: RovikDialogKind.info,
+        buttonLabel: 'ادامه',
+      );
+      if (!await AlertNotifier.requestPermission()) return;
+    }
+    for (final a in due) {
+      await AlertNotifier.show(a);
+    }
   }
 
   /// همه سرورها را با پینگ واقعی TCP تست می‌کند.
@@ -180,6 +230,14 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() => _configs[i].pingMs = ms);
     }
     await widget.store.saveConfigs(_configs);
+    // حافظه هوشمند سرور: سریع‌ترین سرور همین شبکه را به یاد بسپار. وقتی VPN
+    // وصل است پینگ‌ها از داخل تونل‌اند و ربطی به شبکه واقعی ندارند؛ ثبت نمی‌شوند.
+    if (!_connected) {
+      await NetworkMemory.rememberFastest(
+        await NetworkMemory.current(),
+        _configs,
+      );
+    }
     if (!mounted) return;
     setState(() => _refreshingPing = false);
     if (autoSelect && !_manualSelection) _autoSelectFastest(announce: announce);
@@ -250,6 +308,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _onEngineStatus(VpnStatusSnapshot snap) {
     if (!mounted) return;
+    var justConnected = false;
     setState(() {
       _vpnStatus = snap;
       _vpnState = widget.engine.state;
@@ -260,13 +319,50 @@ class _HomeScreenState extends State<HomeScreen>
           _connectedSince == null) {
         _connectedSince = DateTime.now();
         _startElapsedTimer();
+        justConnected = true;
       } else if (_vpnState == VpnConnectionState.disconnected) {
         _connectingTo = null;
         _connectedSince = null;
         _durationTimer?.cancel();
         _elapsed = '۰۰:۰۰:۰۰';
+        // قطع شد: بخش آی‌پی/کشور پنهان می‌شود.
+        _ipToken++;
+        _ipInfo = null;
       }
     });
+    if (justConnected) _fetchIpInfo();
+  }
+
+  /// آی‌پی خروجی و کشور را (از داخل VPN) می‌گیرد. شکست هیچ خطا یا
+  /// دیالوگی ندارد؛ فقط بخش نمایش داده نمی‌شود.
+  Future<void> _fetchIpInfo() async {
+    final token = ++_ipToken;
+    // چند لحظه صبر تا تونل جا بیفتد.
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (!mounted || token != _ipToken || !_connected) return;
+      final info = await IpInfoService.fetch();
+      if (!mounted || token != _ipToken || !_connected) return;
+      if (info != null) {
+        setState(() => _ipInfo = info);
+        return;
+      }
+      await Future<void>.delayed(const Duration(seconds: 3));
+    }
+  }
+
+  /// سرور همیشگیِ این شبکه (اگر قبلاً یاد گرفته شده) را انتخاب می‌کند؛
+  /// فقط وقتی کاربر خودش دستی سروری انتخاب نکرده باشد.
+  Future<void> _applyRememberedServer() async {
+    if (_manualSelection || _configs.isEmpty) return;
+    final ctx = await NetworkMemory.current();
+    final idx = await NetworkMemory.recallIndex(ctx, _configs);
+    if (idx == null || ctx == null || !mounted) return;
+    if (idx != _selected) {
+      setState(() => _selected = idx);
+      widget.store.saveSelectedIndex(idx);
+    }
+    _snack('سرور همیشگی ${ctx.label} انتخاب شد.');
   }
 
   void _startElapsedTimer() {
@@ -286,6 +382,7 @@ class _HomeScreenState extends State<HomeScreen>
       _goBuy();
       return;
     }
+    if (!_connected && VpnEngine.isSupported) await _applyRememberedServer();
     final cfg = _selectedConfig!;
     if (_connected) {
       setState(() => _vpnState = VpnConnectionState.disconnecting);
@@ -497,6 +594,8 @@ class _HomeScreenState extends State<HomeScreen>
       _operatorTesting = false;
       _subInfo = null;
       _subUrl = null;
+      _alerts = const [];
+      _ipInfo = null;
       _vpnStatus = const VpnStatusSnapshot();
       _vpnState = VpnConnectionState.disconnected;
     });
@@ -595,6 +694,10 @@ class _HomeScreenState extends State<HomeScreen>
                   _FadeIn(index: 0, child: _topBar()),
                   const SizedBox(height: 24),
                   _FadeIn(index: 1, child: _connectionCard()),
+                  if (_alerts.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _alertBanner(),
+                  ],
                   const SizedBox(height: 16),
                   _FadeIn(index: 2, child: _packageCard()),
                   const SizedBox(height: 24),
@@ -675,7 +778,7 @@ class _HomeScreenState extends State<HomeScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Rovik',
+                'RovikVpn',
                 style: TextStyle(
                   fontSize: 20,
                   height: 1.3,
@@ -830,6 +933,19 @@ class _HomeScreenState extends State<HomeScreen>
                           ? Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                if (_ipInfo != null) ...[
+                                  Text(
+                                    _ipInfo!.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      height: 1.4,
+                                      color: RovikTheme.textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
                                 Row(
                                   children: [
                                     const Text(
@@ -1069,6 +1185,61 @@ class _HomeScreenState extends State<HomeScreen>
           style: const TextStyle(fontSize: 11, color: RovikTheme.textMuted),
         ),
       ],
+    );
+  }
+
+  /// بنر هشدار کم شدن حجم یا روز (زیر کارت اتصال).
+  Widget _alertBanner() {
+    return Container(
+      decoration: BoxDecoration(
+        color: RovikTheme.gold.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: RovikTheme.gold.withValues(alpha: 0.45)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < _alerts.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: RovikTheme.gold,
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _alerts[i].title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: RovikTheme.textMain,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _alerts[i].body,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.6,
+                          color: RovikTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 

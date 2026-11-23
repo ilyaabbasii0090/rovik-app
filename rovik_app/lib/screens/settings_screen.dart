@@ -64,7 +64,7 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 24),
               const Center(
                 child: Text(
-                  'Rovik — نسخه ۱٫۰٫۰',
+                  'RovikVpn — نسخه ۱٫۰٫۰',
                   style: TextStyle(color: RovikTheme.textMuted),
                 ),
               ),
