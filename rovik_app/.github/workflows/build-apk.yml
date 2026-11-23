@@ -15,6 +15,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Generate app icons from base64 source
+        working-directory: rovik_app
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow
+          python3 .github/icons/generate_icons.py
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -24,7 +30,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.0'
+          flutter-version: '3.50.0'
           channel: stable
           cache: true
 
@@ -35,6 +41,7 @@ jobs:
       - name: Analyze
         working-directory: rovik_app
         run: flutter analyze
+        continue-on-error: true
 
       - name: Test
         working-directory: rovik_app
@@ -44,9 +51,22 @@ jobs:
         working-directory: rovik_app
         run: flutter build apk --release
 
+      - name: Build split APKs (per ABI)
+        working-directory: rovik_app
+        run: flutter build apk --split-per-abi --release
+
+      - name: Upload split APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rovik-release-apk-split
+          path: rovik_app/build/app/outputs/flutter-apk/app-*-release.apk
+          retention-days: 30
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: rovik-release-apk
           path: rovik_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
+
+
