@@ -15,6 +15,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Generate app icons from base64 source
+        working-directory: rovik_app
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow
+          python3 .github/icons/generate_icons.py
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -62,4 +68,3 @@ jobs:
           name: rovik-release-apk
           path: rovik_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
-
